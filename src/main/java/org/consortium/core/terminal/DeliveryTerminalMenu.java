@@ -94,6 +94,16 @@ public final class DeliveryTerminalMenu extends AbstractContainerMenu {
         return pos;
     }
 
+    /** True while every grid slot is empty (both sides: the slots are synced). The Shop button needs it (v0.2, 5.2). */
+    public boolean gridEmpty() {
+        for (int i = 0; i < GRID_SLOTS; i++) {
+            if (!grid.getItem(i).isEmpty()) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     // ---- vanilla hooks ----
 
     @Override

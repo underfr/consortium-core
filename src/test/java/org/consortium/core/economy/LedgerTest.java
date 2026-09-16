@@ -110,6 +110,44 @@ class LedgerTest {
     }
 
     @Test
+    void rolledBackPurchasesAreListedForTheBootNotice() throws IOException {
+        Ledger first = open();
+        first.boot(0);
+        first.write(List.of(LedgerLine.of(LedgerType.API_CREDIT).player(ALEX, "Alex").total(100_000).balance(100_000).reason("quest")));
+        first.write(List.of(LedgerLine.of(LedgerType.PURCHASE).tx("a1b2c3d4").player(ALEX, "Alex").counterpart("shop:chunk_loader_basic")
+                .total(-40_000).balance(60_000).reason("chunk_loader_basic").extra("entry_name", "Basic Chunk Loader")
+                .extra("item", "chunkloaders:basic_chunk_loader x1")));
+        first.write(List.of(LedgerLine.of(LedgerType.PURCHASE).tx("deadbeef").player(ALEX, "Alex").counterpart("shop:claim_chunks_10")
+                .total(-12_000).balance(48_000).reason("claim_chunks_10").extra("entry_name", "10 extra claim chunks")));
+        first.write(List.of(LedgerLine.of(LedgerType.ADMIN_ADD).player(ALEX, "Alex").total(1).balance(48_001).reason("tip")));
+        first.close();
+        // Only seq 1 and 2 were saved: the second purchase and the admin add rolled back.
+        Ledger second = open();
+        assertEquals(new Ledger.RollbackRange(3, 4), second.boot(2));
+        List<String> purchases = second.lastRollbackPurchases();
+        assertEquals(1, purchases.size());
+        assertEquals("deadbeef", LedgerLine.stringFieldOf(purchases.get(0), "tx"));
+        assertEquals(-12_000L, LedgerLine.totalOf(purchases.get(0)));
+        assertEquals("tx deadbeef: Alex paid 120.00 CC for claim_chunks_10", Ledger.describePurchase(purchases.get(0)));
+        second.close();
+        Ledger third = open();
+        assertNull(third.boot(5));
+        assertTrue(third.lastRollbackPurchases().isEmpty());
+        third.close();
+    }
+
+    @Test
+    void rawFieldReadersTolerateEscapesAndAbsence() {
+        String line = "{\"ts\":\"2026-09-16T10:15:30Z\",\"seq\":9,\"tx\":\"a1b2c3d4\",\"type\":\"PURCHASE\",\"name\":\"Al \\\"ex\\\"\",\"total\":-5,\"reason\":\"k\"}";
+        assertEquals("a1b2c3d4", LedgerLine.stringFieldOf(line, "tx"));
+        assertEquals("Al \\\"ex\\\"", LedgerLine.stringFieldOf(line, "name"));
+        assertEquals("k", LedgerLine.stringFieldOf(line, "reason"));
+        assertNull(LedgerLine.stringFieldOf(line, "counterpart"));
+        assertEquals(-5L, LedgerLine.totalOf(line));
+        assertEquals(0L, LedgerLine.totalOf("{\"seq\":1}"));
+    }
+
+    @Test
     void tailFiltersNewestFirstFromTheRing() throws IOException {
         Ledger ledger = open();
         ledger.boot(0);

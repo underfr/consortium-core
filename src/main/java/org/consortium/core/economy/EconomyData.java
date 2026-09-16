@@ -243,6 +243,17 @@ public final class EconomyData extends SavedData {
                 paid.add(p);
             }
             t.put("daily_paid", paid);
+            if (!a.dailyBought.isEmpty()) {
+                ListTag bought = new ListTag();
+                for (Account.DailyBought b : a.dailyBought) {
+                    CompoundTag p = new CompoundTag();
+                    p.putString("key", b.key);
+                    p.putString("utc_day", b.utcDay);
+                    p.putInt("count", b.count);
+                    bought.add(p);
+                }
+                t.put("daily_bought", bought);
+            }
             accountList.add(t);
         }
         tag.put("accounts", accountList);
@@ -364,6 +375,11 @@ public final class EconomyData extends SavedData {
             for (Tag rawPaid : t.getList("daily_paid", Tag.TAG_COMPOUND)) {
                 CompoundTag p = (CompoundTag) rawPaid;
                 a.dailyPaid.add(new Account.DailyPaid(p.getString("family"), p.getString("utc_day"), p.getDouble("units")));
+            }
+            // Absent in v0.1 saves: an empty list, no schema bump (v0.2, 5.3).
+            for (Tag rawBought : t.getList("daily_bought", Tag.TAG_COMPOUND)) {
+                CompoundTag p = (CompoundTag) rawBought;
+                a.dailyBought.add(new Account.DailyBought(p.getString("key"), p.getString("utc_day"), p.getInt("count")));
             }
             data.accounts.put(a.uuid, a);
         }

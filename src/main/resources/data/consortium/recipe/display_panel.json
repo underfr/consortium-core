@@ -1,0 +1,19 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "redstone",
+  "group": "consortium",
+  "pattern": [
+    "GGG",
+    "IRI",
+    "III"
+  ],
+  "key": {
+    "G": { "item": "minecraft:glass" },
+    "I": { "tag": "c:ingots/iron" },
+    "R": { "item": "minecraft:redstone" }
+  },
+  "result": {
+    "id": "consortium:display_panel",
+    "count": 4
+  }
+}

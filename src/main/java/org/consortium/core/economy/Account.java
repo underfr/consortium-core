@@ -31,6 +31,19 @@ public final class Account {
         }
     }
 
+    /** Purchases of one shop entry on one UTC day, for the per-player daily limit (v0.2, 5.3). */
+    public static final class DailyBought {
+        public final String key;
+        public final String utcDay;
+        public int count;
+
+        public DailyBought(String key, String utcDay, int count) {
+            this.key = key;
+            this.utcDay = utcDay;
+            this.count = count;
+        }
+    }
+
     public final UUID uuid;
     /** Refreshed at every login; {@code <unknown>} for an account created by the API before any login. */
     public String name;
@@ -44,6 +57,7 @@ public final class Account {
     public long lastSeen;
     public Grant grant = Grant.NONE;
     public final List<DailyPaid> dailyPaid = new ArrayList<>();
+    public final List<DailyBought> dailyBought = new ArrayList<>();
 
     public Account(UUID uuid, String name) {
         this.uuid = uuid;
@@ -74,5 +88,31 @@ public final class Account {
     /** Drops the entries of past days. */
     public void pruneDailyPaid(String utcDay) {
         dailyPaid.removeIf(d -> !d.utcDay.equals(utcDay));
+    }
+
+    /** Purchases of a shop entry on the given UTC day. */
+    public int boughtToday(String key, String utcDay) {
+        for (DailyBought b : dailyBought) {
+            if (b.key.equals(key) && b.utcDay.equals(utcDay)) {
+                return b.count;
+            }
+        }
+        return 0;
+    }
+
+    /** Counts one purchase of a shop entry on the given UTC day. */
+    public void addDailyBought(String key, String utcDay) {
+        for (DailyBought b : dailyBought) {
+            if (b.key.equals(key) && b.utcDay.equals(utcDay)) {
+                b.count++;
+                return;
+            }
+        }
+        dailyBought.add(new DailyBought(key, utcDay, 1));
+    }
+
+    /** Drops the purchase counters of past days. */
+    public void pruneDailyBought(String utcDay) {
+        dailyBought.removeIf(b -> !b.utcDay.equals(utcDay));
     }
 }

@@ -2,6 +2,7 @@ package org.consortium.core.monitoring;
 
 import org.consortium.core.ConsortiumCore;
 import org.consortium.core.ConsortiumRuntime;
+import org.consortium.core.compat.ChaptersBridge;
 import org.consortium.core.compat.SdlinkBridge;
 import org.consortium.core.config.CommonConfig;
 import org.consortium.core.economy.Account;
@@ -67,7 +68,10 @@ public final class Scheduler {
         }
     }
 
-    /** Builds the weekly (7) or daily (1) report from the in-memory aggregates. */
+    /**
+     * Builds the weekly (7) or daily (1) report from the in-memory aggregates. The weekly one ends with the guard
+     * counters of v0.2 section 3 when Chapters is present ("Guards since boot: N placements refused, M instant audits").
+     */
     public static String report(ConsortiumRuntime rt, int windowDays) {
         long now = rt.now();
         List<String> atFloor = new ArrayList<>();
@@ -78,6 +82,10 @@ public final class Scheduler {
         }
         List<Account> accounts = new ArrayList<>(rt.economy.accounts());
         LocalDate today = LocalDate.ofInstant(Instant.ofEpochMilli(now), ZoneOffset.UTC);
-        return Reports.build(rt.economy.supplyDays(), accounts, atFloor, rt.prices::displayName, today, now, windowDays);
+        String text = Reports.build(rt.economy.supplyDays(), accounts, atFloor, rt.prices::displayName, today, now, windowDays);
+        if (windowDays >= 7 && ChaptersBridge.available()) {
+            text = Reports.appendLine(text, ChaptersBridge.counters().summary());
+        }
+        return text;
     }
 }

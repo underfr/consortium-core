@@ -15,8 +15,10 @@ import java.util.List;
  * @param unitCents   current unit price in cents
  * @param quotaOnly   true when the family pays nothing and only counts for the phase engine's quota
  * @param overridden  true when a {@code /prices set} override is active
+ * @param charterFamily {@code raw}, {@code power}, {@code transport} or {@code neutral} (PROGRESSION 9.1, v0.2 section 6)
  * @param members     human readable member list
  */
 public record PriceView(String key, String name, long baseCents, double halfVolume, double floorRatio, double dailyCap,
-                        double saturation, long unitCents, boolean quotaOnly, boolean overridden, List<String> members) {
+                        double saturation, long unitCents, boolean quotaOnly, boolean overridden, String charterFamily,
+                        List<String> members) {
 }

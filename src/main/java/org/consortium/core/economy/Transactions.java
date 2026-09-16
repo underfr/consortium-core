@@ -78,6 +78,11 @@ public final class Transactions {
     // ---- helpers ----
 
     public String utcDay(long now) {
+        return utcDayOf(now);
+    }
+
+    /** {@code YYYY-MM-DD} of an epoch instant in UTC: the day boundary of the ledger files, the daily caps and the shop limits. */
+    public static String utcDayOf(long now) {
         return LocalDate.ofInstant(Instant.ofEpochMilli(now), ZoneOffset.UTC).toString();
     }
 
@@ -130,6 +135,16 @@ public final class Transactions {
      */
     private Outcome changeBalance(Account account, long newBalance, LedgerType type, String reason, String counterpart,
                                   boolean postEvent, Map<String, Object> extras) {
+        return changeBalance(account, newBalance, type, null, reason, counterpart, postEvent, extras, Long.MAX_VALUE);
+    }
+
+    /**
+     * The full form: {@code tx} stamps the line (null for the untagged admin and API lines) and {@code ceiling} is
+     * the highest balance a listener may leave after the event (v0.2, 5.3: a purchase lets a listener take more,
+     * never less, so a value above {@code oldBalance - price} is a veto).
+     */
+    private Outcome changeBalance(Account account, long newBalance, LedgerType type, String tx, String reason, String counterpart,
+                                  boolean postEvent, Map<String, Object> extras, long ceiling) {
         long now = rt.now();
         long oldBalance = account.balance;
         if (newBalance < 0 || newBalance > Money.MAX_BALANCE_CENTS) {
@@ -150,9 +165,14 @@ public final class Transactions {
             if (newBalance < 0 || newBalance > Money.MAX_BALANCE_CENTS) {
                 return Outcome.fail(Result.INVALID_AMOUNT);
             }
+            if (newBalance > ceiling) {
+                ConsortiumCore.LOGGER.warn("BalanceChangeEvent listener raised the balance of {} for {} ({}) from {} to {} cents, above the {} cents the change allows: treated as a veto",
+                        account.name, type, reason, oldBalance, newBalance, ceiling);
+                return Outcome.fail(Result.VETOED);
+            }
         }
         long delta = newBalance - oldBalance;
-        LedgerLine line = LedgerLine.of(type).player(account.uuid, account.name).counterpart(counterpart)
+        LedgerLine line = LedgerLine.of(type).tx(tx).player(account.uuid, account.name).counterpart(counterpart)
                 .total(delta).balance(newBalance).reason(reason);
         if (extras != null) {
             extras.forEach(line::extra);
@@ -243,6 +263,51 @@ public final class Transactions {
             return new Outcome(Result.INSUFFICIENT_FUNDS, account.balance, 0);
         }
         return changeBalance(account, account.balance - cents, LedgerType.API_DEBIT, sinkId, sinkId, true, null);
+    }
+
+    /** A committed shop purchase: the transaction id, the price paid and the balance after it. */
+    public record PurchaseReceipt(String txId, long cents, long balanceAfter) {
+    }
+
+    /** The outcome of {@link #purchase}: a receipt on {@code SUCCESS}, else the refusal code. */
+    public record PurchaseResult(Result result, PurchaseReceipt receipt, long balance) {
+        public static PurchaseResult fail(Result result, long balance) {
+            return new PurchaseResult(result, null, balance);
+        }
+
+        public boolean ok() {
+            return result == Result.SUCCESS && receipt != null;
+        }
+    }
+
+    /**
+     * A shop purchase (v0.2, 5.3, step 2): ledger {@code PURCHASE} with {@code reason} = the catalogue key,
+     * {@code counterpart} = {@code shop:<key>}, the display name in the extra {@code entry_name} and the caller's
+     * extras (item or command, terminal, by) after it. {@link BalanceChangeEvent} is posted; a listener may take
+     * more, never less. Never overdrafts. The caller gives the item or runs the command only on {@code ok()}.
+     */
+    public PurchaseResult purchase(UUID uuid, String name, long cents, String key, String entryName, String tx, Map<String, Object> extras) {
+        if (cents <= 0) {
+            return PurchaseResult.fail(Result.INVALID_AMOUNT, 0);
+        }
+        Account account = rt.economy.getOrCreate(uuid, name);
+        if (account.balance < cents) {
+            return PurchaseResult.fail(Result.INSUFFICIENT_FUNDS, account.balance);
+        }
+        if (tx == null || tx.isBlank()) {
+            tx = newTxId();
+        }
+        Map<String, Object> all = new LinkedHashMap<>();
+        all.put("entry_name", entryName);
+        if (extras != null) {
+            all.putAll(extras);
+        }
+        long target = account.balance - cents;
+        Outcome outcome = changeBalance(account, target, LedgerType.PURCHASE, tx, key, "shop:" + key, true, all, target);
+        if (!outcome.ok()) {
+            return PurchaseResult.fail(outcome.result(), account.balance);
+        }
+        return new PurchaseResult(Result.SUCCESS, new PurchaseReceipt(tx, cents, outcome.balanceAfter()), outcome.balanceAfter());
     }
 
     /** Rank metric only: no balance change, ledger {@code RANK_CREDIT}. */

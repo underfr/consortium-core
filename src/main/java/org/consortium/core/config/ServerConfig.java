@@ -22,6 +22,8 @@ public final class ServerConfig {
     private static final ModConfigSpec.DoubleValue DAILY_CAP_MULTIPLIER;
     private static final ModConfigSpec.IntValue QUOTE_TOLERANCE_PERCENT;
     private static final ModConfigSpec.ConfigValue<String> CONTRIBUTE_COMMAND;
+    private static final ModConfigSpec.BooleanValue PLACEMENT_GUARD;
+    private static final ModConfigSpec.BooleanValue INSTANT_AUDIT;
 
     /** What happens when a new account's connection already received the starting capital. */
     public enum MultiAccountGrant {
@@ -53,6 +55,15 @@ public final class ServerConfig {
                         "Placeholders: {item} registry id, {count} integer, {player} name, {uuid}, {tx}. Empty = disabled.",
                         "Output is suppressed; failures are logged once per minute and never affect the delivery.")
                 .define("contribute_command", DEFAULT_CONTRIBUTE_COMMAND);
+        b.pop();
+        b.comment("Chapters guards (v0.2 section 3): both do nothing without the Chapters mod").push("guards");
+        PLACEMENT_GUARD = b.comment("Refuse placing a block whose item Chapters locks for the placer's team. A fake player (deployer)",
+                        "may place a gated block only when one of its stages is consortium:phase_k with k at most the",
+                        "phase of the last quota board snapshot (every gated block is locked before the first publish).")
+                .define("placement_guard", true);
+        INSTANT_AUDIT = b.comment("Drop a locked item the moment it lands in a player's inventory (same tick as the click or",
+                        "the give) instead of waiting for Chapters' one-second sweep.")
+                .define("instant_audit", true);
         b.pop();
         SPEC = b.build();
     }
@@ -86,5 +97,15 @@ public final class ServerConfig {
     /** The follow-up command template (see {@link org.consortium.core.terminal.ContributeHook}). */
     public static String contributeCommand() {
         return loaded() ? CONTRIBUTE_COMMAND.get() : DEFAULT_CONTRIBUTE_COMMAND;
+    }
+
+    /** Guard 1 of v0.2 section 3 (needs Chapters). */
+    public static boolean placementGuard() {
+        return !loaded() || PLACEMENT_GUARD.get();
+    }
+
+    /** Guard 2 of v0.2 section 3 (needs Chapters). */
+    public static boolean instantAudit() {
+        return !loaded() || INSTANT_AUDIT.get();
     }
 }

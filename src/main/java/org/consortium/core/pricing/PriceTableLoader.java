@@ -130,6 +130,15 @@ public final class PriceTableLoader extends SimpleJsonResourceReloadListener {
         if (phaseValue != null) {
             phase = phaseValue.intValue();
         }
+        String charterFamily = PriceFamily.NEUTRAL;
+        if (o.has("charter_family")) {
+            String v = o.get("charter_family").isJsonPrimitive() ? o.get("charter_family").getAsString() : null;
+            String normalized = PriceFamily.normalizeCharterFamily(v);
+            if (v == null || !normalized.equals(v.trim().toLowerCase(java.util.Locale.ROOT))) {
+                warnings.add(file + ": family '" + key + "' charter_family must be raw, power, transport or neutral, using neutral");
+            }
+            charterFamily = normalized;
+        }
         Map<String, Double> members = new LinkedHashMap<>();
         if (o.has("members")) {
             if (!o.get("members").isJsonObject()) {
@@ -163,7 +172,7 @@ public final class PriceTableLoader extends SimpleJsonResourceReloadListener {
         } else {
             members.put(key, 1.0);
         }
-        return new RawFamily(key, name, baseCents, halfVolume, floor, halfLife, cap, fileCapMultiplier, phase, members, file);
+        return new RawFamily(key, name, baseCents, halfVolume, floor, halfLife, cap, fileCapMultiplier, phase, charterFamily, members, file);
     }
 
     private static Double optDouble(JsonObject o, String key) {

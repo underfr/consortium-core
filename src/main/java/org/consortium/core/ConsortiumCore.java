@@ -6,6 +6,7 @@ import net.minecraft.world.inventory.MenuType;
 import net.minecraft.world.item.CreativeModeTabs;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.level.block.SoundType;
+import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.state.BlockBehaviour;
 import net.minecraft.world.level.material.MapColor;
 import net.minecraft.world.level.material.PushReaction;
@@ -34,15 +35,25 @@ import org.consortium.core.command.CcoreCommand;
 import org.consortium.core.command.CreditsCommand;
 import org.consortium.core.command.Permissions;
 import org.consortium.core.command.PricesCommand;
+import org.consortium.core.compat.ChaptersBridge;
+import org.consortium.core.compat.FtbTeamsBridge;
 import org.consortium.core.config.CommonConfig;
 import org.consortium.core.config.ServerConfig;
 import org.consortium.core.identity.LoginHooks;
 import org.consortium.core.network.ConsortiumNetwork;
 import org.consortium.core.pricing.PriceTable;
 import org.consortium.core.pricing.PriceTableLoader;
+import org.consortium.core.shop.ShopCatalog;
+import org.consortium.core.shop.ShopCatalogLoader;
+import org.consortium.core.shop.ShopMenu;
+import org.consortium.core.shop.ShopService;
 import org.consortium.core.terminal.DeliveryTerminalBlock;
+import org.consortium.core.terminal.DeliveryTerminalBlockEntity;
 import org.consortium.core.terminal.DeliveryTerminalItem;
 import org.consortium.core.terminal.DeliveryTerminalMenu;
+import org.consortium.core.terminal.DisplayPanelBlock;
+import org.consortium.core.terminal.DisplayPanelBlockEntity;
+import org.consortium.core.terminal.DisplayPanelItem;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -54,9 +65,11 @@ import org.slf4j.LoggerFactory;
  * {@code contribute_command} follow-up. Here: ledger, accounts, identity and starting capital, price datapack and
  * market, the command trees ({@code /credits}, {@code /prices}, {@code /ccore}), the API and its events, monitoring
  * and the SDLink bridge, the server-side delivery service, the Delivery Terminal block, its menu and the network
- * payloads; the screen, the HUD and the client config live behind {@link ConsortiumCoreClient}. Optional
- * integrations (KubeJS, FTB Teams, FTB Quests, SDLink) are compile-time dependencies reached only through bridge
- * classes behind {@link ModList#isLoaded(String)} checks.
+ * payloads, the Delivery Station (terminal block entity plus Display Panels) and the quota board the engine
+ * publishes, the Chapters guards, the party stage copy and the shop (catalogue datapack, menu, purchase); the screens,
+ * the HUD, the board renderer and the client config live behind {@link ConsortiumCoreClient}. Optional integrations (KubeJS, FTB Teams, FTB Quests, Chapters,
+ * SDLink) are compile-time dependencies reached only through bridge classes behind {@link ModList#isLoaded(String)}
+ * checks.
  */
 @Mod(ConsortiumCore.MOD_ID)
 public final class ConsortiumCore {
@@ -65,11 +78,14 @@ public final class ConsortiumCore {
 
     /** One price table per JVM: the datapack loader fills it, the runtime merges it, commands read it. */
     public static final PriceTable PRICES = new PriceTable();
+    /** One shop catalogue per JVM (v0.2, 5.1): the datapack loader fills it, {@code TagsUpdatedEvent} audits it. */
+    public static final ShopCatalog SHOP = new ShopCatalog();
 
     // ---- registries (specification 5) ----
     public static final DeferredRegister.Blocks BLOCKS = DeferredRegister.createBlocks(MOD_ID);
     public static final DeferredRegister.Items ITEMS = DeferredRegister.createItems(MOD_ID);
     public static final DeferredRegister<MenuType<?>> MENUS = DeferredRegister.create(Registries.MENU, MOD_ID);
+    public static final DeferredRegister<BlockEntityType<?>> BLOCK_ENTITIES = DeferredRegister.create(Registries.BLOCK_ENTITY_TYPE, MOD_ID);
 
     /** Strength 3.5, blast resistance 1200, pickaxe required, pushes nothing: a fixture, not a machine. */
     public static final DeferredBlock<DeliveryTerminalBlock> DELIVERY_TERMINAL = BLOCKS.registerBlock("delivery_terminal",
@@ -78,8 +94,24 @@ public final class ConsortiumCore {
                     .pushReaction(PushReaction.BLOCK).sound(SoundType.METAL));
     public static final DeferredItem<DeliveryTerminalItem> DELIVERY_TERMINAL_ITEM = ITEMS.registerItem("delivery_terminal",
             properties -> new DeliveryTerminalItem(DELIVERY_TERMINAL.get(), properties), new Item.Properties());
+    /** The Display Panel of the Delivery Station screen (v0.2, 2.1): strength 2.0 / 6.0, pickaxe, pushes nothing. */
+    public static final DeferredBlock<DisplayPanelBlock> DISPLAY_PANEL = BLOCKS.registerBlock("display_panel",
+            DisplayPanelBlock::new,
+            BlockBehaviour.Properties.of().mapColor(MapColor.COLOR_BLACK).strength(2.0F, 6.0F).requiresCorrectToolForDrops()
+                    .pushReaction(PushReaction.BLOCK).sound(SoundType.METAL));
+    public static final DeferredItem<DisplayPanelItem> DISPLAY_PANEL_ITEM = ITEMS.registerItem("display_panel",
+            properties -> new DisplayPanelItem(DISPLAY_PANEL.get(), properties), new Item.Properties());
     public static final DeferredHolder<MenuType<?>, MenuType<DeliveryTerminalMenu>> DELIVERY_TERMINAL_MENU = MENUS.register("delivery_terminal",
             () -> IMenuTypeExtension.create(DeliveryTerminalMenu::new));
+    /** The zero-slot shop menu (v0.2, 5.2). */
+    public static final DeferredHolder<MenuType<?>, MenuType<ShopMenu>> SHOP_MENU = MENUS.register("shop",
+            () -> IMenuTypeExtension.create(ShopMenu::new));
+    public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<DeliveryTerminalBlockEntity>> DELIVERY_TERMINAL_BE =
+            BLOCK_ENTITIES.register("delivery_terminal",
+                    () -> BlockEntityType.Builder.of(DeliveryTerminalBlockEntity::new, DELIVERY_TERMINAL.get()).build(null));
+    public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<DisplayPanelBlockEntity>> DISPLAY_PANEL_BE =
+            BLOCK_ENTITIES.register("display_panel",
+                    () -> BlockEntityType.Builder.of(DisplayPanelBlockEntity::new, DISPLAY_PANEL.get()).build(null));
 
     public ConsortiumCore(IEventBus modBus, ModContainer container) {
         LOGGER.info("Consortium Core loaded (version {})", container.getModInfo().getVersion());
@@ -89,6 +121,7 @@ public final class ConsortiumCore {
         BLOCKS.register(modBus);
         ITEMS.register(modBus);
         MENUS.register(modBus);
+        BLOCK_ENTITIES.register(modBus);
         modBus.addListener(this::onRegisterPayloads);
         modBus.addListener(this::onBuildCreativeTabs);
         ConsortiumRuntime.addBalanceListener(ConsortiumNetwork::onBalanceChanged);
@@ -105,6 +138,9 @@ public final class ConsortiumCore {
         bus.addListener(this::onPlayerRespawn);
         bus.addListener(this::onPlayerChangedDimension);
         bus.addListener(this::onServerTickPost);
+        // v0.2 sections 3 and 4: each bridge registers nothing when its mod is absent.
+        ChaptersBridge.install(bus);
+        FtbTeamsBridge.install();
 
         PRICES.setDatapackListener(table -> {
             ConsortiumRuntime rt = ConsortiumRuntime.get();
@@ -124,11 +160,14 @@ public final class ConsortiumCore {
     private void onBuildCreativeTabs(BuildCreativeModeTabContentsEvent event) {
         if (event.getTabKey() == CreativeModeTabs.FUNCTIONAL_BLOCKS) {
             event.accept(DELIVERY_TERMINAL_ITEM.get());
+            event.accept(DISPLAY_PANEL_ITEM.get());
         }
     }
 
     private void onAddReloadListeners(AddReloadListenerEvent event) {
         event.addListener(new PriceTableLoader(PRICES));
+        // RegistryAccess extends HolderLookup.Provider: the shop loader parses item stacks with registry-aware ops.
+        event.addListener(new ShopCatalogLoader(SHOP, event.getRegistryAccess()));
     }
 
     private void onTagsUpdated(TagsUpdatedEvent event) {
@@ -137,6 +176,11 @@ public final class ConsortiumCore {
         }
         PRICES.tagsBound();
         PRICES.rebuildIndex();
+        // v0.2, 5.1: the price-table and Chapters-lock checks need the item index (a no-op at the first boot, where the
+        // index only exists after ServerStartedEvent merged the prices: onServerStarted audits again). /reload lands here
+        // with the index rebuilt, so viewers get the reloaded catalogue.
+        SHOP.audit(PRICES);
+        ShopService.refreshViewers();
     }
 
     private void onRegisterCommands(RegisterCommandsEvent event) {
@@ -147,9 +191,10 @@ public final class ConsortiumCore {
 
     private void onServerStarted(ServerStartedEvent event) {
         ModList mods = ModList.get();
-        LOGGER.info("Consortium Core starting with the server. Optional mods present: kubejs={}, ftbteams={}, ftbquests={}, sdlink={}",
-                mods.isLoaded("kubejs"), mods.isLoaded("ftbteams"), mods.isLoaded("ftbquests"), mods.isLoaded("sdlink"));
+        LOGGER.info("Consortium Core starting with the server. Optional mods present: kubejs={}, ftbteams={}, ftbquests={}, chapters={}, sdlink={}",
+                mods.isLoaded("kubejs"), mods.isLoaded("ftbteams"), mods.isLoaded("ftbquests"), mods.isLoaded("chapters"), mods.isLoaded("sdlink"));
         ConsortiumRuntime.start(event.getServer(), PRICES);
+        SHOP.audit(PRICES);
     }
 
     private void onServerStopping(ServerStoppingEvent event) {
@@ -161,6 +206,7 @@ public final class ConsortiumCore {
 
     private void onServerStopped(ServerStoppedEvent event) {
         ConsortiumRuntime.stop();
+        ChaptersBridge.resetCounters();
     }
 
     private void onPlayerLoggedIn(PlayerEvent.PlayerLoggedInEvent event) {

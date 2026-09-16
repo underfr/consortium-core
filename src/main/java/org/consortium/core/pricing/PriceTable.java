@@ -131,7 +131,7 @@ public final class PriceTable {
                 double floor = o.floorRatio() != null ? o.floorRatio() : defaults.floorRatio();
                 double cap = o.dailyCap() != null ? o.dailyCap() : (o.baseCents() > 0 ? defaults.dailyCapMultiplier() * halfVolume : 0);
                 next.put(o.family(), new PriceFamily(o.family(), null, o.baseCents(), halfVolume, floor, defaults.halfLifeHours(), cap, 0,
-                        Map.of(o.family(), 1.0), "override", true));
+                        PriceFamily.NEUTRAL, Map.of(o.family(), 1.0), "override", true));
             }
         }
         // Diff against the applied table.
@@ -143,7 +143,7 @@ public final class PriceTable {
                 data.putApplied(current);
             } else if (!current.sameValues(previous)) {
                 PriceFamily before = new PriceFamily(f.key(), f.name(), previous.baseCents(), previous.halfVolume(), previous.floorRatio(),
-                        f.halfLifeHours(), previous.dailyCap(), f.phase(), f.members(), f.source(), false);
+                        f.halfLifeHours(), previous.dailyCap(), f.phase(), f.charterFamily(), f.members(), f.source(), false);
                 changes.add(new PriceChange(f.key(), before, f, by, reason));
                 data.putApplied(current);
             }
@@ -152,7 +152,7 @@ public final class PriceTable {
             if (!next.containsKey(key)) {
                 AppliedPrice previous = data.applied(key);
                 PriceFamily before = new PriceFamily(key, null, previous.baseCents(), previous.halfVolume(), previous.floorRatio(),
-                        defaults.halfLifeHours(), previous.dailyCap(), 0, Map.of(key, 1.0), "removed", false);
+                        defaults.halfLifeHours(), previous.dailyCap(), 0, PriceFamily.NEUTRAL, Map.of(key, 1.0), "removed", false);
                 changes.add(new PriceChange(key, before, null, by, reason));
                 data.removeApplied(key);
             }
@@ -196,6 +196,6 @@ public final class PriceTable {
             cap = multiplier > 0 ? multiplier * raw.halfVolume() : 0;
         }
         return new PriceFamily(raw.key(), raw.name(), raw.baseCents(), raw.halfVolume(), floor, halfLife, cap, raw.phase(),
-                raw.members(), raw.source(), false);
+                raw.charterFamily(), raw.members(), raw.source(), false);
     }
 }

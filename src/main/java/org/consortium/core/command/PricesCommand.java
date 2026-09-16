@@ -106,6 +106,9 @@ public final class PricesCommand {
             }
             sb.append(')');
         }
+        if (!PriceFamily.NEUTRAL.equals(f.charterFamily())) {
+            sb.append("; charter family ").append(f.charterFamily());
+        }
         if (target.get().item() != null) {
             sb.append("; ").append(new net.minecraft.world.item.ItemStack(target.get().item()).getHoverName().getString())
                     .append(" counts ").append(Units.format(target.get().weight())).append(" unit(s)");

@@ -3,6 +3,7 @@ package org.consortium.core.client;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.player.Inventory;
@@ -13,6 +14,7 @@ import org.consortium.core.config.CommonConfig;
 import org.consortium.core.economy.Money;
 import org.consortium.core.economy.Units;
 import org.consortium.core.network.DeliveryConfirmPayload;
+import org.consortium.core.network.ShopOpenPayload;
 import org.consortium.core.terminal.DeliveryTerminalMenu;
 import org.consortium.core.terminal.Quote;
 
@@ -54,6 +56,7 @@ public final class DeliveryTerminalScreen extends AbstractContainerScreen<Delive
     private static final int TEXT_ALERT = 0xFFB03A00;
 
     private Button deliverButton;
+    private Button shopButton;
     private long lastSentNonce = Long.MIN_VALUE;
 
     public DeliveryTerminalScreen(DeliveryTerminalMenu menu, Inventory playerInventory, Component title) {
@@ -73,6 +76,13 @@ public final class DeliveryTerminalScreen extends AbstractContainerScreen<Delive
         addRenderableWidget(Button.builder(Component.translatable("gui.consortium.terminal.cancel"), b -> onClose())
                 .bounds(deliverX - 4 - cancelWidth, topPos + BUTTON_Y, cancelWidth, 16).build());
         deliverButton.active = false;
+        // v0.2, 5.2: the Shop button sits in the free margin right of the grid, active only while the grid is empty
+        // (opening the shop closes this menu and hands the grid back).
+        int shopWidth = 30;
+        shopButton = addRenderableWidget(Button.builder(Component.translatable("gui.consortium.terminal.shop"), b -> openShop())
+                .bounds(leftPos + imageWidth - 4 - shopWidth, topPos + DeliveryTerminalMenu.GRID_Y, shopWidth, 16).build());
+        shopButton.setTooltip(Tooltip.create(Component.translatable("gui.consortium.terminal.shop_grid")));
+        shopButton.active = menu.gridEmpty();
     }
 
     @Override
@@ -80,6 +90,19 @@ public final class DeliveryTerminalScreen extends AbstractContainerScreen<Delive
         super.containerTick();
         Quote quote = menu.clientQuote();
         deliverButton.active = quote != null && quote.hasAccepted() && quote.nonce() != lastSentNonce;
+        boolean empty = menu.gridEmpty();
+        if (shopButton.active != empty) {
+            shopButton.active = empty;
+            shopButton.setTooltip(empty ? null : Tooltip.create(Component.translatable("gui.consortium.terminal.shop_grid")));
+        }
+    }
+
+    private void openShop() {
+        if (!menu.gridEmpty()) {
+            return;
+        }
+        shopButton.active = false;
+        PacketDistributor.sendToServer(new ShopOpenPayload(menu.terminalPos()));
     }
 
     private void sendConfirm() {

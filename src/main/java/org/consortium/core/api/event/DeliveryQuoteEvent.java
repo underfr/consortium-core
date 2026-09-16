@@ -18,14 +18,16 @@ public class DeliveryQuoteEvent extends Event {
     public static final class Line {
         private final int index;
         private final String family;
+        private final String charterFamily;
         private final List<String> items;
         private final double units;
         private final double paidUnits;
         private final long cents;
 
-        public Line(int index, String family, List<String> items, double units, double paidUnits, long cents) {
+        public Line(int index, String family, String charterFamily, List<String> items, double units, double paidUnits, long cents) {
             this.index = index;
             this.family = family;
+            this.charterFamily = charterFamily == null ? "neutral" : charterFamily;
             this.items = Collections.unmodifiableList(new ArrayList<>(items));
             this.units = units;
             this.paidUnits = paidUnits;
@@ -38,6 +40,14 @@ public class DeliveryQuoteEvent extends Event {
 
         public String getFamily() {
             return family;
+        }
+
+        /**
+         * {@code raw}, {@code power}, {@code transport} or {@code neutral}: the class the PROGRESSION 9.1 charter
+         * modifiers apply to (the {@code charter_family} of the price family, v0.2 section 6).
+         */
+        public String getCharterFamily() {
+            return charterFamily;
         }
 
         /** Item ids with counts, e.g. {@code minecraft:iron_ingot x64}. */

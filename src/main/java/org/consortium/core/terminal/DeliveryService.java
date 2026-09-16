@@ -139,7 +139,9 @@ public final class DeliveryService {
             for (Transactions.ItemCount ic : agg.items()) {
                 itemText.add(ic.id() + " x" + ic.count());
             }
-            eventLines.add(new DeliveryQuoteEvent.Line(i, agg.family(), itemText, q.units(), q.paidUnits(), q.cents()));
+            PriceFamily fam = rt.prices.family(agg.family());
+            eventLines.add(new DeliveryQuoteEvent.Line(i, agg.family(), fam == null ? PriceFamily.NEUTRAL : fam.charterFamily(),
+                    itemText, q.units(), q.paidUnits(), q.cents()));
         }
         DeliveryQuoteEvent event = new DeliveryQuoteEvent(player, eventLines);
         try {

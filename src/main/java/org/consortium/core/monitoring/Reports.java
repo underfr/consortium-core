@@ -149,7 +149,22 @@ public final class Reports {
             sb.append(", largest ").append(Money.format(largestDay.largestCents)).append(" by ").append(who != null ? who : largestDay.largestUuid)
                     .append(" (tx ").append(largestDay.largestTx).append(')');
         }
-        String text = sb.toString();
+        return clip(sb.toString());
+    }
+
+    /**
+     * Appends one line to a report (the guard counters of v0.2 section 3 on the weekly one) and clips the result to
+     * the Discord limit again, the appended line being the one cut when the report is already at the limit.
+     */
+    public static String appendLine(String report, String line) {
+        if (line == null || line.isEmpty()) {
+            return report;
+        }
+        return clip(report + "\n" + line);
+    }
+
+    /** Discord messages are capped at 2000 characters: 1985 plus an ellipsis line. */
+    private static String clip(String text) {
         return text.length() > 1990 ? text.substring(0, 1985) + "\n..." : text;
     }
 

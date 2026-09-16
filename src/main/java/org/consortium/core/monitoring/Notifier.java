@@ -81,6 +81,12 @@ public final class Notifier {
         player.sendSystemMessage(prefixed(text));
     }
 
+    /** Sends a prefixed component (a translatable rendered by the client's lang file) to one player. */
+    public static void tell(ServerPlayer player, Component text) {
+        player.sendSystemMessage(Component.literal(PREFIX).withStyle(ChatFormatting.GOLD)
+                .append(text.copy().withStyle(ChatFormatting.WHITE)));
+    }
+
     /**
      * Records a message detected at boot (price changes, rollback): shown to each player (or op) at login for 24 h
      * and relayed to Discord at the next minute tick.

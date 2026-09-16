@@ -6,20 +6,38 @@ import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
+import com.mojang.brigadier.suggestion.SuggestionProvider;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
+import net.minecraft.commands.SharedSuggestionProvider;
+import net.minecraft.commands.arguments.EntityArgument;
 import net.minecraft.commands.arguments.GameProfileArgument;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.server.level.ServerPlayer;
 import net.neoforged.fml.ModList;
 import org.consortium.core.ConsortiumCore;
 import org.consortium.core.ConsortiumRuntime;
+import org.consortium.core.api.ConsortiumAPI;
+import org.consortium.core.board.BoardSnapshot;
+import org.consortium.core.compat.ChaptersBridge;
 import org.consortium.core.compat.SdlinkBridge;
+import org.consortium.core.config.CommonConfig;
 import org.consortium.core.config.ServerConfig;
+import org.consortium.core.economy.Account;
 import org.consortium.core.economy.Ledger;
 import org.consortium.core.economy.LedgerLine;
+import org.consortium.core.economy.Money;
+import org.consortium.core.economy.Transactions;
 import org.consortium.core.monitoring.Scheduler;
+import org.consortium.core.network.ShopCatalogPayload;
+import org.consortium.core.shop.ShopEntry;
+import org.consortium.core.shop.ShopService;
 
 import java.io.IOException;
+import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 import static org.consortium.core.command.CommandSupport.fail;
 import static org.consortium.core.command.CommandSupport.grey;
@@ -31,7 +49,8 @@ import static org.consortium.core.command.CommandSupport.runtime;
  * {@code /ccore} (specification 4): the mod's own admin tree, deliberately not rooted at {@code /consortium}, which
  * the pack's KubeJS phase engine owns (Brigadier would merge two roots of the same name in undefined order).
  * Subcommands: {@code version}, {@code ledger tail}, {@code report [weekly|daily]}, {@code identity forget|purge},
- * and {@code selftest} only when the JVM runs with {@code -Dconsortium.selftest=true} (test servers).
+ * {@code board} (the quota board snapshot the engine published, v0.2 7), {@code shop list|open|buy} (v0.2 5.3) and
+ * {@code selftest} only when the JVM runs with {@code -Dconsortium.selftest=true} (test servers).
  */
 public final class CcoreCommand {
     /** JVM flag that registers {@code /ccore selftest}; never set it on the production server. */
@@ -61,6 +80,27 @@ public final class CcoreCommand {
                         .executes(ctx -> report(ctx, 7))
                         .then(Commands.literal("weekly").executes(ctx -> report(ctx, 7)))
                         .then(Commands.literal("daily").executes(ctx -> report(ctx, 1))))
+                .then(Commands.literal("board")
+                        .requires(Permissions.require(Permissions.ADMIN_REPORT, 2))
+                        .executes(CcoreCommand::board))
+                .then(Commands.literal("shop")
+                        .then(Commands.literal("list")
+                                .requires(Permissions.require(Permissions.ADMIN_SHOP, 2))
+                                .executes(ctx -> shopList(ctx, null))
+                                .then(Commands.argument("player", EntityArgument.player())
+                                        .executes(ctx -> shopList(ctx, EntityArgument.getPlayer(ctx, "player")))))
+                        .then(Commands.literal("open")
+                                .requires(Permissions.require(Permissions.ADMIN_SHOP, 2))
+                                .executes(ctx -> shopOpen(ctx, CommandSupport.player(ctx.getSource())))
+                                .then(Commands.argument("player", EntityArgument.player())
+                                        .executes(ctx -> shopOpen(ctx, EntityArgument.getPlayer(ctx, "player")))))
+                        .then(Commands.literal("buy")
+                                .requires(Permissions.require(Permissions.ADMIN_SHOP_BUY, 4))
+                                .then(Commands.argument("key", StringArgumentType.word())
+                                        .suggests(SHOP_KEY_SUGGESTIONS)
+                                        .executes(ctx -> shopBuy(ctx, CommandSupport.player(ctx.getSource())))
+                                        .then(Commands.argument("player", EntityArgument.player())
+                                                .executes(ctx -> shopBuy(ctx, EntityArgument.getPlayer(ctx, "player")))))))
                 .then(Commands.literal("identity")
                         .requires(Permissions.require(Permissions.ADMIN_IDENTITY, 4))
                         .then(Commands.literal("forget")
@@ -96,7 +136,8 @@ public final class CcoreCommand {
             sb.append("; contribute command: ").append(hook == null || hook.isBlank() ? "disabled" : "'" + hook + "'");
         }
         sb.append("; optional mods: kubejs=").append(mods.isLoaded("kubejs")).append(", ftbteams=").append(mods.isLoaded("ftbteams"))
-                .append(", ftbquests=").append(mods.isLoaded("ftbquests")).append(", sdlink=").append(mods.isLoaded("sdlink"))
+                .append(", ftbquests=").append(mods.isLoaded("ftbquests")).append(", chapters=").append(mods.isLoaded("chapters"))
+                .append(ChaptersBridge.available() ? " (guards on)" : "").append(", sdlink=").append(mods.isLoaded("sdlink"))
                 .append(SdlinkBridge.available() ? " (bridge on)" : "").append(", luckperms=").append(mods.isLoaded("luckperms"));
         if (selfTestEnabled()) {
             sb.append("; selftest enabled");
@@ -132,6 +173,118 @@ public final class CcoreCommand {
             ctx.getSource().sendSuccess(() -> grey("Posted to Discord through Simple Discord Link."), false);
         }
         return 1;
+    }
+
+    private static int board(CommandContext<CommandSourceStack> ctx) throws CommandSyntaxException {
+        ConsortiumRuntime rt = runtime();
+        BoardSnapshot s = rt.board.current();
+        if (s == null) {
+            ctx.getSource().sendSuccess(() -> grey("Quota board: no snapshot (revision " + rt.board.revision() + "); the engine has not published yet."), false);
+            return 1;
+        }
+        String head = String.format(Locale.US, "Quota board revision %d, published %s: phase %d (%s), day %d of %d, completion %d %%%s, %d line(s)",
+                rt.board.revision(), Instant.ofEpochMilli(rt.board.publishedAt()), s.phase(), s.name(), s.day(), s.days(),
+                (int) Math.floor(s.completion() * 100), s.complete() ? ", complete" : "", s.lines().size());
+        ctx.getSource().sendSuccess(() -> info(head), false);
+        for (BoardSnapshot.Line line : s.lines()) {
+            String text = String.format(Locale.US, "  %s: %,d / %,d (%s, icon %s)%s", line.label(), line.current(), line.target(), line.key(), line.icon(),
+                    line.done() ? " done" : "");
+            ctx.getSource().sendSuccess(() -> grey(text), false);
+        }
+        return 1;
+    }
+
+    // ---- shop (v0.2, 5.3) ----
+
+    private static final SuggestionProvider<CommandSourceStack> SHOP_KEY_SUGGESTIONS = (ctx, builder) -> {
+        List<String> keys = new ArrayList<>();
+        for (ShopEntry e : ConsortiumCore.SHOP.entries()) {
+            keys.add(e.key());
+        }
+        return SharedSuggestionProvider.suggest(keys, builder);
+    };
+
+    /** The entries with their state for the console (no player: gates listed, not evaluated) or for the named player. */
+    private static int shopList(CommandContext<CommandSourceStack> ctx, ServerPlayer player) throws CommandSyntaxException {
+        ConsortiumRuntime rt = runtime();
+        String symbol = CommonConfig.currencySymbol();
+        int count = ConsortiumCore.SHOP.size();
+        String head = "Shop catalogue: " + count + " entr" + (count == 1 ? "y" : "ies") + " from " + ConsortiumCore.SHOP.fileCount()
+                + " file(s), board phase " + ConsortiumAPI.boardPhase() + (player == null ? "" : ", as seen by " + player.getGameProfile().getName())
+                + (ChaptersBridge.available() ? "" : ", Chapters absent (stage-gated entries hidden)");
+        ctx.getSource().sendSuccess(() -> info(head), false);
+        if (count == 0) {
+            ctx.getSource().sendSuccess(() -> grey("  (nothing for sale)"), false);
+        }
+        ShopCatalogPayload view = player == null ? null : ShopService.catalog(player, 0);
+        String day = Transactions.utcDayOf(rt.now());
+        for (ShopEntry e : ConsortiumCore.SHOP.entries()) {
+            StringBuilder sb = new StringBuilder("  ").append(e.key()).append(": ").append(e.name()).append(", ")
+                    .append(Money.format(e.priceCents(), symbol)).append(", ");
+            sb.append(e.isItem() ? e.itemText() : "command '" + e.command() + "' (icon " + BuiltInRegistries.ITEM.getKey(e.icon().getItem()) + ")");
+            String refusal = ConsortiumCore.SHOP.refusal(e.key());
+            if (refusal != null) {
+                sb.append(", REFUSED (priced item)");
+            } else if (view != null) {
+                ShopCatalogPayload.Entry row = view.entry(e.key());
+                if (row == null) {
+                    sb.append(", HIDDEN (stage-gated, Chapters absent)");
+                } else {
+                    sb.append(", ").append(row.state());
+                    if (e.dailyLimit() > 0) {
+                        sb.append(" (").append(row.boughtToday()).append(" of ").append(e.dailyLimit()).append(" today)");
+                    }
+                }
+            } else {
+                List<String> gates = new ArrayList<>();
+                if (e.stage() != null) {
+                    gates.add("stage " + e.stage());
+                }
+                if (e.phase() > 0) {
+                    gates.add("phase " + e.phase() + (ConsortiumAPI.boardPhase() < e.phase() ? " (locked now)" : ""));
+                }
+                if (e.dailyLimit() > 0) {
+                    gates.add(e.dailyLimit() + " per day");
+                }
+                sb.append(gates.isEmpty() ? ", no gate" : ", " + String.join(", ", gates));
+            }
+            final String text = sb.toString();
+            ctx.getSource().sendSuccess(() -> refusal != null ? fail(text) : grey(text), false);
+        }
+        List<String> warnings = ConsortiumCore.SHOP.warnings();
+        if (!warnings.isEmpty()) {
+            ctx.getSource().sendSuccess(() -> info("Load refusals and warnings (" + warnings.size() + "):"), false);
+            for (String w : warnings) {
+                ctx.getSource().sendSuccess(() -> fail("  " + w), false);
+            }
+        }
+        if (player != null && rt.economy.account(player.getUUID()) != null) {
+            Account a = rt.economy.account(player.getUUID());
+            final String balance = "  balance " + Money.format(a.balance, symbol) + ", UTC day " + day;
+            ctx.getSource().sendSuccess(() -> grey(balance), false);
+        }
+        return 1;
+    }
+
+    /** Opens the shop screen for an online player without a terminal (the harness needs it). */
+    private static int shopOpen(CommandContext<CommandSourceStack> ctx, ServerPlayer player) throws CommandSyntaxException {
+        runtime();
+        ShopService.openFromCommand(player);
+        ctx.getSource().sendSuccess(() -> ok("Shop opened for " + player.getGameProfile().getName() + "."), true);
+        return 1;
+    }
+
+    /** The same purchase as the screen, with the source as {@code by} and {@code terminal = console}. */
+    private static int shopBuy(CommandContext<CommandSourceStack> ctx, ServerPlayer player) throws CommandSyntaxException {
+        runtime();
+        String key = StringArgumentType.getString(ctx, "key");
+        ShopService.Outcome outcome = ShopService.purchase(player, key, CommandSupport.counterpart(ctx.getSource()));
+        if (ctx.getSource().getPlayer() != player) {
+            String who = player.getGameProfile().getName();
+            ctx.getSource().sendSuccess(() -> outcome.ok() ? ok(who + ": " + outcome.message().getString())
+                    : fail(who + ": " + outcome.message().getString()), true);
+        }
+        return outcome.ok() ? 1 : 0;
     }
 
     private static int identityForget(CommandContext<CommandSourceStack> ctx) throws CommandSyntaxException {

@@ -1,0 +1,7 @@
+{
+  "parent": "minecraft:block/cube_column",
+  "textures": {
+    "end": "consortium:block/display_panel_side",
+    "side": "consortium:block/display_panel"
+  }
+}

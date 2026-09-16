@@ -44,9 +44,17 @@ repositories {
         url = 'https://maven.firstdark.dev/releases'
         content { includeGroup 'com.hypherionmc.sdlink' }
     }
-    // JUnit 5 for the pure-Java unit tests.
+    // Chapters is published on Modrinth only. The Modrinth Maven (https://support.modrinth.com/en/articles/8801191-modrinth-maven)
+    // maps maven.modrinth:<slug>:<version number or id> to the same CDN file the pack downloads, no token needed.
+    maven {
+        name = 'Modrinth'
+        url = 'https://api.modrinth.com/maven'
+        content { includeGroup 'maven.modrinth' }
+    }
+    // JUnit 5 for the pure-Java unit tests, plus Gson for the board JSON tests.
     mavenCentral {
         content {
+            includeGroup 'com.google.code.gson'
             includeGroup 'org.junit'
             includeGroup 'org.junit.jupiter'
             includeGroup 'org.junit.platform'
@@ -103,6 +111,8 @@ dependencies {
     // SDLink is server-only in the pack and never on the dev runtime classpath (it needs CraterLib and a bot token);
     // the bridge class is reached only behind ModList.isLoaded("sdlink").
     compileOnly("com.hypherionmc.sdlink:sdlink:${sdlink_version}") { transitive = false }
+    // Chapters stage engine (com.gabinx.chapters): item locks and the stage index. The Modrinth POM declares no dependencies.
+    compileOnly("maven.modrinth:chapters:${chapters_version}") { transitive = false }
 
     // Same jars at runtime so runServer / runClient load them next to the mod (comment out for a vanilla-only run).
     localRuntime("dev.latvian.mods:kubejs-neoforge:${kubejs_version}") { transitive = false }
@@ -111,11 +121,15 @@ dependencies {
     localRuntime("dev.ftb.mods:ftb-library-neoforge:${ftb_library_version}") { transitive = false }
     localRuntime("dev.ftb.mods:ftb-teams-neoforge:${ftb_teams_version}") { transitive = false }
     localRuntime("dev.ftb.mods:ftb-quests-neoforge:${ftb_quests_version}") { transitive = false }
+    localRuntime("maven.modrinth:chapters:${chapters_version}") { transitive = false }
 
     // Unit tests: pure Java, no Minecraft classes on the test classpath.
     testImplementation platform("org.junit:junit-bom:${junit_version}")
     testImplementation 'org.junit.jupiter:junit-jupiter'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+    // ModDevGradle adds the modding dependencies (Gson included) to the main source set only, so the test classpath
+    // has no Gson without this line; 2.10.1 is the version Minecraft 1.21.1 ships. Gson is a plain library, not Minecraft.
+    testImplementation 'com.google.code.gson:gson:2.10.1'
 }
 
 // Expand the placeholders of src/main/templates (neoforge.mods.toml) at build time.

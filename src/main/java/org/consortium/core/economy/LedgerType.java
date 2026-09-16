@@ -14,6 +14,8 @@ public enum LedgerType {
     API_DEBIT,
     /** Rank metric only, no balance change. */
     RANK_CREDIT,
+    /** A shop purchase (v0.2, 5.3): {@code reason} is the catalogue key, {@code counterpart} is {@code shop:<key>}. */
+    PURCHASE,
     PRICE_CHANGE,
     MARKET_RESET,
     /** Written at boot when the newest ledger file holds lines the saved data never saw. */
@@ -22,7 +24,7 @@ public enum LedgerType {
     /** True for the lines that move a balance. */
     public boolean movesMoney() {
         return switch (this) {
-            case DELIVERY, STARTING_CAPITAL, ADMIN_ADD, ADMIN_TAKE, ADMIN_SET, API_CREDIT, API_DEBIT -> true;
+            case DELIVERY, STARTING_CAPITAL, ADMIN_ADD, ADMIN_TAKE, ADMIN_SET, API_CREDIT, API_DEBIT, PURCHASE -> true;
             default -> false;
         };
     }

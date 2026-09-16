@@ -2,6 +2,7 @@ package org.consortium.core;
 
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.world.level.storage.LevelResource;
+import org.consortium.core.board.BoardState;
 import org.consortium.core.economy.EconomyData;
 import org.consortium.core.economy.Ledger;
 import org.consortium.core.economy.Transactions;
@@ -47,6 +48,8 @@ public final class ConsortiumRuntime {
     public final Transactions transactions;
     public final IpSalt salt;
     public final Scheduler scheduler;
+    /** The quota board the KubeJS engine publishes (v0.2, 2.4): snapshot, saved data and client sync. */
+    public final BoardState board;
     private boolean ledgerReady;
 
     private ConsortiumRuntime(MinecraftServer server, PriceTable prices) {
@@ -63,6 +66,7 @@ public final class ConsortiumRuntime {
         this.transactions = new Transactions(this);
         this.salt = new IpSalt(server.getServerDirectory());
         this.scheduler = new Scheduler(this);
+        this.board = new BoardState(server);
     }
 
     /** The active runtime, or null while no server runs. */
@@ -112,6 +116,16 @@ public final class ConsortiumRuntime {
             if (rollback != null) {
                 rt.notifier.bufferBootMessage("Ledger rollback: " + rollback + " never took effect (world restored from an earlier save). "
                         + "Review with /ccore ledger tail and compensate with /credits add.", true);
+                // v0.2, 5.3: a PURCHASE in the range means the money came back while the effect may have been delivered.
+                List<String> purchases = rt.ledger.lastRollbackPurchases();
+                if (!purchases.isEmpty()) {
+                    StringBuilder sb = new StringBuilder("Rolled-back purchases whose effect may have been delivered: ");
+                    for (int i = 0; i < purchases.size(); i++) {
+                        sb.append(i == 0 ? "" : "; ").append(Ledger.describePurchase(purchases.get(i)));
+                    }
+                    sb.append(". Take the credits back with /credits take <player> <amount> <tx> if the item is there.");
+                    rt.notifier.bufferBootMessage(sb.toString(), true);
+                }
             }
             // Persist the new last_seq now (cheap, synchronous) so a crash before the first autosave cannot make the
             // next boot mistake this boot's ROLLBACK marker for a rolled-back line.
@@ -126,6 +140,8 @@ public final class ConsortiumRuntime {
         }
         rt.salt.load();
         rt.mergePrices("datapack", "pack update", true);
+        // Boot order of v0.2 2.5: the saved board, then the snapshot the engine published at ServerStartingEvent.
+        rt.board.boot(rt.now());
         ConsortiumCore.LOGGER.info("Consortium Core ready: {} accounts, {} families, ledger seq {}, contribute command '{}'",
                 rt.economy.accounts().size(), rt.prices.familyCount(), rt.ledger.nextSeq(), org.consortium.core.config.ServerConfig.contributeCommand());
         return rt;
@@ -146,6 +162,7 @@ public final class ConsortiumRuntime {
     static void stop() {
         ConsortiumRuntime rt = current;
         current = null;
+        BoardState.clearPending();
         if (rt != null) {
             rt.ledger.close();
         }

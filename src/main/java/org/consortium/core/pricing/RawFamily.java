@@ -8,7 +8,9 @@ import java.util.Map;
  *
  * @param dailyCap null = {@code daily_cap_multiplier x half_volume} from the file or config defaults
  * @param dailyCapMultiplier the file-level default, null = config default
+ * @param charterFamily {@code raw}, {@code power}, {@code transport} or {@code neutral} (PROGRESSION 9.1 charter modifiers)
  */
 public record RawFamily(String key, String name, long baseCents, double halfVolume, Double floorRatio, Double halfLifeHours,
-                        Double dailyCap, Double dailyCapMultiplier, int phase, Map<String, Double> members, String source) {
+                        Double dailyCap, Double dailyCapMultiplier, int phase, String charterFamily, Map<String, Double> members,
+                        String source) {
 }

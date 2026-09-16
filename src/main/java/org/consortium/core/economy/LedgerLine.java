@@ -144,6 +144,21 @@ public final class LedgerLine {
         return m.find() ? m.group(1) : null;
     }
 
+    /**
+     * Reads a top-level string field of a raw line ({@code tx}, {@code name}, {@code reason}, ...), or null when
+     * absent or not a string. Escapes are left as written; enough for the boot notice, not a JSON parser.
+     */
+    public static String stringFieldOf(String rawLine, String field) {
+        Matcher m = Pattern.compile("\"" + Pattern.quote(field) + "\":\"((?:[^\"\\\\]|\\\\.)*)\"").matcher(rawLine);
+        return m.find() ? m.group(1) : null;
+    }
+
+    /** Reads the signed {@code total} of a raw line, 0 when absent. */
+    public static long totalOf(String rawLine) {
+        Matcher m = Pattern.compile("\"total\":(-?\\d+)").matcher(rawLine);
+        return m.find() ? Long.parseLong(m.group(1)) : 0L;
+    }
+
     @Override
     public String toString() {
         return encoded();

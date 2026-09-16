@@ -53,6 +53,7 @@ public final class Ledger implements AutoCloseable {
     private String openDay;
     private Writer writer;
     private RollbackRange lastRollback;
+    private List<String> lastRollbackPurchases = List.of();
     private boolean bootDone;
 
     public Ledger(Path dir, Clock clock, Consumer<String> warn) {
@@ -73,6 +74,24 @@ public final class Ledger implements AutoCloseable {
     /** The rollback range detected by the last {@link #boot(long)}, or null. */
     public synchronized RollbackRange lastRollback() {
         return lastRollback;
+    }
+
+    /**
+     * The raw {@code PURCHASE} lines inside the last rollback range (v0.2, 5.3): their effect may have been
+     * delivered although the money came back, so the boot notice lists them. Empty when no range was found.
+     */
+    public synchronized List<String> lastRollbackPurchases() {
+        return lastRollbackPurchases;
+    }
+
+    /** One line of the boot notice for a rolled-back purchase: tx, player, key and the amount paid. */
+    public static String describePurchase(String rawLine) {
+        String tx = LedgerLine.stringFieldOf(rawLine, "tx");
+        String name = LedgerLine.stringFieldOf(rawLine, "name");
+        String key = LedgerLine.stringFieldOf(rawLine, "reason");
+        long total = LedgerLine.totalOf(rawLine);
+        return "tx " + (tx == null ? "?" : tx) + ": " + (name == null ? "?" : name) + " paid " + Money.format(-total)
+                + " for " + (key == null ? "?" : key);
     }
 
     /**
@@ -120,8 +139,17 @@ public final class Ledger implements AutoCloseable {
         nextSeq = Math.max(lastSeq, highest) + 1;
         bootDone = true;
         lastRollback = null;
+        lastRollbackPurchases = List.of();
         if (highestEffect > lastSeq && lowestAbove != Long.MAX_VALUE) {
             RollbackRange range = new RollbackRange(lowestAbove, highestEffect);
+            List<String> purchases = new ArrayList<>();
+            for (String line : tail) {
+                long seq = LedgerLine.seqOf(line);
+                if (seq >= range.from() && seq <= range.to() && LedgerType.PURCHASE.name().equals(LedgerLine.typeOf(line))) {
+                    purchases.add(line);
+                }
+            }
+            lastRollbackPurchases = Collections.unmodifiableList(purchases);
             LedgerLine marker = LedgerLine.of(LedgerType.ROLLBACK)
                     .counterpart("boot")
                     .reason("lines written after the last save never took effect: the world rolled back")

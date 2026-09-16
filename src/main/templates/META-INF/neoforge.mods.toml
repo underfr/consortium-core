@@ -42,6 +42,13 @@ description='''${mod_description}'''
     side="BOTH"
 
 [[dependencies.${mod_id}]]
+    modId="chapters"
+    type="optional"
+    versionRange="[1.1,)"
+    ordering="AFTER"
+    side="BOTH"
+
+[[dependencies.${mod_id}]]
     modId="ftbquests"
     type="optional"
     versionRange="[2101.1.30,)"

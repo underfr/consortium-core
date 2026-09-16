@@ -29,10 +29,12 @@ public final class LoginHooks {
         }
         account.lastSeen = now;
         account.pruneDailyPaid(rt.transactions.utcDay(now));
+        account.pruneDailyBought(rt.transactions.utcDay(now));
         rt.economy.touch();
 
         rt.notifier.showBootMessages(player);
         rt.notifyBalance(account.uuid, account.balance, 0, "login");
+        rt.board.sendTo(player);
 
         if (account.grant != Account.Grant.NONE) {
             return;

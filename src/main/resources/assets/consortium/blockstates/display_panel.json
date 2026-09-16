@@ -1,0 +1,5 @@
+{
+  "variants": {
+    "": { "model": "consortium:block/display_panel" }
+  }
+}
