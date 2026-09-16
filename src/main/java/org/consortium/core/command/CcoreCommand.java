@@ -6,6 +6,7 @@ import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
+import com.mojang.brigadier.exceptions.SimpleCommandExceptionType;
 import com.mojang.brigadier.suggestion.SuggestionProvider;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
@@ -13,6 +14,7 @@ import net.minecraft.commands.SharedSuggestionProvider;
 import net.minecraft.commands.arguments.EntityArgument;
 import net.minecraft.commands.arguments.GameProfileArgument;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
 import net.neoforged.fml.ModList;
 import org.consortium.core.ConsortiumCore;
@@ -20,7 +22,9 @@ import org.consortium.core.ConsortiumRuntime;
 import org.consortium.core.api.ConsortiumAPI;
 import org.consortium.core.board.BoardSnapshot;
 import org.consortium.core.compat.ChaptersBridge;
+import org.consortium.core.compat.LuckPermsBridge;
 import org.consortium.core.compat.SdlinkBridge;
+import org.consortium.core.compat.VanishBridge;
 import org.consortium.core.config.CommonConfig;
 import org.consortium.core.config.ServerConfig;
 import org.consortium.core.economy.Account;
@@ -30,6 +34,9 @@ import org.consortium.core.economy.Money;
 import org.consortium.core.economy.Transactions;
 import org.consortium.core.monitoring.Scheduler;
 import org.consortium.core.network.ShopCatalogPayload;
+import org.consortium.core.presence.LegacyText;
+import org.consortium.core.presence.PresenceContext;
+import org.consortium.core.presence.PresenceService;
 import org.consortium.core.shop.ShopEntry;
 import org.consortium.core.shop.ShopService;
 
@@ -49,8 +56,9 @@ import static org.consortium.core.command.CommandSupport.runtime;
  * {@code /ccore} (specification 4): the mod's own admin tree, deliberately not rooted at {@code /consortium}, which
  * the pack's KubeJS phase engine owns (Brigadier would merge two roots of the same name in undefined order).
  * Subcommands: {@code version}, {@code ledger tail}, {@code report [weekly|daily]}, {@code identity forget|purge},
- * {@code board} (the quota board snapshot the engine published, v0.2 7), {@code shop list|open|buy} (v0.2 5.3) and
- * {@code selftest} only when the JVM runs with {@code -Dconsortium.selftest=true} (test servers).
+ * {@code board} (the quota board snapshot the engine published, v0.2 7), {@code shop list|open|buy} (v0.2 5.3),
+ * {@code presence preview <player>|reload} (v0.3 5.7, the harness cannot open the tab list) and {@code selftest} only
+ * when the JVM runs with {@code -Dconsortium.selftest=true} (test servers).
  */
 public final class CcoreCommand {
     /** JVM flag that registers {@code /ccore selftest}; never set it on the production server. */
@@ -107,7 +115,13 @@ public final class CcoreCommand {
                                 .then(Commands.argument("player", GameProfileArgument.gameProfile())
                                         .suggests(CommandSupport.ACCOUNT_SUGGESTIONS)
                                         .executes(CcoreCommand::identityForget)))
-                        .then(Commands.literal("purge").executes(CcoreCommand::identityPurge)));
+                        .then(Commands.literal("purge").executes(CcoreCommand::identityPurge)))
+                .then(Commands.literal("presence")
+                        .requires(Permissions.require(Permissions.ADMIN_PRESENCE, 2))
+                        .then(Commands.literal("preview")
+                                .then(Commands.argument("player", EntityArgument.player())
+                                        .executes(ctx -> presencePreview(ctx, EntityArgument.getPlayer(ctx, "player")))))
+                        .then(Commands.literal("reload").executes(CcoreCommand::presenceReload)));
         if (selfTestEnabled()) {
             ConsortiumCore.LOGGER.warn("/ccore selftest is registered (-D{}=true): it writes real ledger lines, keep it off production", SELFTEST_PROPERTY);
             root.then(Commands.literal("selftest")
@@ -138,7 +152,10 @@ public final class CcoreCommand {
         sb.append("; optional mods: kubejs=").append(mods.isLoaded("kubejs")).append(", ftbteams=").append(mods.isLoaded("ftbteams"))
                 .append(", ftbquests=").append(mods.isLoaded("ftbquests")).append(", chapters=").append(mods.isLoaded("chapters"))
                 .append(ChaptersBridge.available() ? " (guards on)" : "").append(", sdlink=").append(mods.isLoaded("sdlink"))
-                .append(SdlinkBridge.available() ? " (bridge on)" : "").append(", luckperms=").append(mods.isLoaded("luckperms"));
+                .append(SdlinkBridge.available() ? " (bridge on)" : "").append(", luckperms=").append(mods.isLoaded(LuckPermsBridge.MOD_ID))
+                .append(", vmod=").append(mods.isLoaded(VanishBridge.MOD_ID));
+        PresenceService presence = PresenceService.get();
+        sb.append("; presence ").append(presence == null ? "not started" : presence.enabled() ? "on" : "off");
         if (selfTestEnabled()) {
             sb.append("; selftest enabled");
         }
@@ -308,5 +325,68 @@ public final class CcoreCommand {
         }
         ctx.getSource().sendSuccess(() -> ok("Identity purged: " + count + " hash(es) and the salt deleted; a new salt is generated at the next start."), true);
         return 1;
+    }
+
+    // ---- presence (v0.3, 5.7) ----
+
+    private static final SimpleCommandExceptionType PRESENCE_NOT_STARTED = new SimpleCommandExceptionType(
+            Component.literal("The presence module is not started (server starting or stopping)."));
+
+    /**
+     * Prints, as plain text (codes stripped, for the harness grep), the real outputs of the event pipeline: the chat
+     * display name (with every other listener's contribution, Vanishmod's marker included in the tab name), the header,
+     * the footer and the MOTD. The display name caches are refreshed first so the lines are current.
+     */
+    private static int presencePreview(CommandContext<CommandSourceStack> ctx, ServerPlayer player) throws CommandSyntaxException {
+        PresenceService svc = PresenceService.get();
+        if (svc == null) {
+            throw PRESENCE_NOT_STARTED.create();
+        }
+        String name = player.getGameProfile().getName();
+        if (svc.enabled()) {
+            player.refreshDisplayName();
+            player.refreshTabListName();
+        }
+        PresenceContext info = PresenceContext.ofPlayer(svc.server(), svc.formats(), player, null);
+        List<String> lines = new ArrayList<>();
+        lines.add("Presence preview for " + name + " (group " + info.rank().group() + ", luckperms " + yesNo(LuckPermsBridge.available())
+                + ", vanished " + yesNo(info.vanished()) + (svc.enabled() ? "" : ", presence disabled") + ")");
+        lines.add("chat: " + player.getDisplayName().getString() + " Hello from the harness");
+        Component tab = player.getTabListDisplayName();
+        lines.add("tab: " + (tab == null ? name + " (client-side team name)" : tab.getString()));
+        PresenceService.HeaderFooter hf = svc.headerFooter(player);
+        lines.add("header:");
+        for (String line : LegacyText.strip(hf.headerText()).split("\n", -1)) {
+            lines.add("  " + line);
+        }
+        lines.add("footer:");
+        for (String line : LegacyText.strip(hf.footerText()).split("\n", -1)) {
+            lines.add("  " + line);
+        }
+        lines.add("motd:" + (svc.formats().motdEnabled() ? "" : " (disabled, server.properties value kept)"));
+        for (String line : LegacyText.strip(svc.motd()).split("\n", -1)) {
+            lines.add("  " + line);
+        }
+        boolean first = true;
+        for (String line : lines) {
+            final boolean head = first;
+            ctx.getSource().sendSuccess(() -> head ? info(line) : grey(line), false);
+            first = false;
+        }
+        return 1;
+    }
+
+    private static int presenceReload(CommandContext<CommandSourceStack> ctx) throws CommandSyntaxException {
+        PresenceService svc = PresenceService.get();
+        if (svc == null) {
+            throw PRESENCE_NOT_STARTED.create();
+        }
+        int count = svc.reload();
+        ctx.getSource().sendSuccess(() -> ok("Presence reloaded: " + count + " players refreshed"), true);
+        return 1;
+    }
+
+    private static String yesNo(boolean value) {
+        return value ? "yes" : "no";
     }
 }

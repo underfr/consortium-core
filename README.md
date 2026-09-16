@@ -15,10 +15,11 @@ console, which is exactly the engine's `/consortium contribute <item> <count>` c
 under `/credits`, `/prices` and `/ccore`, never under `/consortium`, and its KubeJS binding is named `ConsortiumCore`
 so the engine's script-level `Consortium` object is untouched.
 
-## What it does (0.2.0)
+## What it does (0.3.0)
 
-The design lives in `docs/CONSORTIUM_CORE.md` (v0.1) and `docs/CONSORTIUM_CORE_V02.md` (v0.2) at the repository root
-and follows `docs/PROJECT_RULES.md` section 4.2. Implemented in this build:
+The design lives in `docs/CONSORTIUM_CORE.md` (v0.1), `docs/CONSORTIUM_CORE_V02.md` (v0.2) and section 5 of
+`docs/WORLD_VISUALS_ADMIN_PRESENCE.md` (v0.3, the presence module) at the repository root and follows
+`docs/PROJECT_RULES.md` section 4.2. Implemented in this build:
 
 - **Ledger**: `world/consortium/ledger/YYYY-MM-DD.jsonl`, write-ahead (no line, no money), flushed per line, never
   replayed; boot scan marks a rolled-back tail with a `ROLLBACK` line (earlier markers never nest, and `last_seq` is
@@ -41,7 +42,9 @@ and follows `docs/PROJECT_RULES.md` section 4.2. Implemented in this build:
   - `/ccore` (= `/ccore version`), `/ccore ledger tail [n] [filter]`, `/ccore report [weekly|daily]`, `/ccore board`,
     `/ccore shop list [player]`, `/ccore shop open [player]` (node `consortium.admin.shop`, level 2), `/ccore shop buy
     <key> [player]` (node `consortium.admin.shop_buy`, level 4: it spends another player's credits, an owner and
-    harness tool), `/ccore identity forget <player>`, `/ccore identity purge`, and `/ccore selftest`, which exists only when the JVM
+    harness tool), `/ccore identity forget <player>`, `/ccore identity purge`, `/ccore presence preview <player>` and
+    `/ccore presence reload` (node `consortium.admin.presence`, level 2, console allowed; see Presence below), and
+    `/ccore selftest`, which exists only when the JVM
     runs with `-Dconsortium.selftest=true` (test servers): it runs an API deposit, a withdraw, an overdraft refusal and a
     full terminal delivery on the fake account `SelfTest`, prints every ledger line and the market move, and ends with
     `SELFTEST OK` or the list of failed checks; it writes real ledger lines and runs the real `contribute_command`.
@@ -119,6 +122,39 @@ and follows `docs/PROJECT_RULES.md` section 4.2. Implemented in this build:
 - **Client HUD**: "Credits: 412.55 CC" in the top-left corner by default (`config/consortium-client.toml`:
   `hud.enabled`, `corner`, `offset_x`, `offset_y`, `delta_seconds`), the last change shown in green or red for a few
   seconds, hidden until the first sync from the current server, toggled with `J` (rebindable, category Consortium).
+- **Presence** (v0.3, `org.consortium.core.presence`, server side, no mixin): rank prefixes in chat and in the tab
+  list, a per-viewer tab header and footer, and the server list MOTD, all from the `[presence]` section of the SERVER
+  config (`world/serverconfig/consortium-server.toml`, synced to clients, nothing secret). Every format accepts `&x`
+  and section-sign codes, `&#rrggbb` hex colours (not in the MOTD: the server list only renders the 16 legacy colours,
+  hex is dropped with one WARN per reload) and the placeholders `{server}`, `{phase}`, `{phase_name}`, `{day}`,
+  `{days}` (the last quota board snapshot; `0`, `Preparation`, `0`, `0` before the first publish), `{name}`,
+  `{prefix}`, `{suffix}`, `{group}`, `{rank_color}` (LuckPerms: highest-weight prefix and suffix, primary group display
+  name, meta `rank.color` as a colour name, a `&x` code or `#rrggbb`), `{credits}` (the viewer's balance), `{currency}`,
+  `{tps}` (one decimal, capped at the tick rate), `{mspt}` (integer), `{online}` (players Vanishmod does not hide)
+  and `{max}`; unknown tokens stay verbatim. Defaults: `chat_name` and `tab_name`
+  `{rank_color}{prefix}&f{name}{suffix}`, a three-line header (server name, phase and day, the viewer's group and
+  credits), a footer with TPS, MSPT and the online count, a two-line MOTD (server name and phase, TPS and online
+  count), `tab_refresh_ticks` 60, `motd_refresh_ticks` 100, `chat_body_style` empty (the LuckPerms meta `chat.style`
+  overrides it per group). How it hooks in, and why it is safe for signed chat: the sender part of a chat line is
+  `player.getDisplayName()`, set through `PlayerEvent.NameFormat` at NORMAL priority with `{name}` = the display name
+  the event carries (a nickname set earlier survives, a later listener wraps the result), which also prefixes join,
+  leave, death, advancement, `/say`, `/me` and `/tell` lines and is the only part "Only Show Secure Chat" clients keep;
+  the tab entry comes from `PlayerEvent.TabListNameFormat` at NORMAL (Vanishmod appends its `[Vanished]` marker at
+  LOW, after it); the body of a chat message is only ever styled through `ServerChatEvent.setMessage`, which fills the
+  unsigned content and nothing else (signature, signed body, last-seen chain and the client report log untouched, no
+  "Modified" tag because the text is never changed). The event is never cancelled and no system message is ever
+  rebroadcast in its place: that pattern (LPChatPrefix and friends) turns signed chat into unsigned system chat and is
+  forbidden by the pack. Header and footer are rendered per viewer every `tab_refresh_ticks` and sent through
+  `ServerPlayer.setTabListHeaderFooter` only when their text changed (with TPS at one decimal and MSPT as an integer a
+  healthy server sends nothing for minutes); the MOTD goes through `MinecraftServer.setMotd` + `invalidateStatus` every
+  `motd_refresh_ticks` when it changed (the status ping is anonymous, so no rank there). Rank changes refresh names
+  and tab entries live through LuckPerms' `UserDataRecalculateEvent` (hopped to the server thread); a player whose
+  LuckPerms user was not loaded when the name was first formatted is refreshed 20 ticks after login. Config edits are
+  picked up by the NeoForge file watcher; `/ccore presence reload` applies them to everyone at once and prints
+  `Presence reloaded: N players refreshed`. `/ccore presence preview <player>` prints, as plain text, the real
+  outputs of the pipeline (`chat:`, `tab:`, `header:`, `footer:`, `motd:`) because the test harness cannot open the
+  tab list. LuckPerms and Vanishmod are optional: without LuckPerms prefix, suffix and rank colour are empty and the
+  group is `default`; without Vanishmod everyone counts as online.
 
 ### The contribute follow-up
 
@@ -144,7 +180,11 @@ namespaced id, `{count}` as digits): a value that fails is never rendered and th
 Optional compile-time integrations, pinned to the versions the pack ships: KubeJS 2101.7.2-build.377, Rhino
 2101.2.7-build.85, FTB Library 2101.1.36, FTB Teams 2101.1.11, FTB Quests 2101.1.35, Architectury 13.0.11, Simple
 Discord Link 3.4.4 (server only), Chapters 1.1 (Modrinth-only, resolved through the Modrinth Maven at
-`https://api.modrinth.com/maven`, no token). None of them is bundled; the mod must keep loading when they are absent.
+`https://api.modrinth.com/maven`, no token), LuckPerms API 5.5 (`net.luckperms:api` from Maven Central; the pack's
+LuckPerms 5.4.150 jar ships exactly that class set unshaded, `compileOnly`, never bundled, reached only behind
+`ModList.isLoaded("luckperms")`). Vanishmod (All Rights Reserved) has no compile dependency: one method handle on
+`VanishUtil.isVanished(Player)` behind `ModList.isLoaded("vmod")`. None of them is bundled; the mod must keep loading
+when they are absent, and no class of any of them appears in a mod entry class signature.
 
 ## Building
 
@@ -183,18 +223,18 @@ build.gradle, settings.gradle, gradle.properties   Gradle build (ModDevGradle)
 gradle/wrapper/                                    Gradle 9.2.1 wrapper (jar verified against the official sha256)
 .github/workflows/ci.yml, release.yml              CI build on push and PR; GitHub Release with the jar on a v*.*.* tag
 .github/RELEASE_NOTES.md                           notes attached to every release (disclaimer included)
-src/main/java/org/consortium/core/                 mod sources (economy, pricing, identity, command, monitoring, api, compat, terminal, board, shop, network, client)
+src/main/java/org/consortium/core/                 mod sources (economy, pricing, identity, command, monitoring, api, compat, terminal, board, shop, network, presence, client)
 src/main/templates/META-INF/neoforge.mods.toml     mod metadata template, expanded at build time
 src/main/resources/kubejs.bindings.txt             KubeJS binding of the API as "ConsortiumCore" in server scripts
 src/main/resources/assets/consortium/              blockstates, models, placeholder textures and en_us lang of the terminal and the display panel
 src/main/resources/data/                           loot tables, mineable tags and the display panel recipe
-src/test/java/                                     JUnit 5 unit tests (no Minecraft classes): money, curve, ledger, identity, reports, command template and placeholder rules, shop entry validation, board JSON, board layout, screen formation, guard rules
+src/test/java/                                     JUnit 5 unit tests (no Minecraft classes): money, curve, ledger, identity, reports, command template and placeholder rules, shop entry validation, board JSON, board layout, screen formation, guard rules, presence (legacy colour codes, placeholders, TPS math, MOTD text)
 ```
 
 ## Shipping
 
 CI (`.github/workflows/ci.yml`) builds every push to `main` and every pull request on JDK 21. Pushing a tag such as
-`v0.1.0` runs `.github/workflows/release.yml`, which builds the jar and creates the GitHub Release with
+`v0.3.0` runs `.github/workflows/release.yml`, which builds the jar and creates the GitHub Release with
 `build/libs/consortium-<version>.jar` attached and `.github/RELEASE_NOTES.md` as the body.
 
 The pack references that release asset with packwiz (side `both`: the client needs the screen and the HUD, which is
@@ -203,7 +243,7 @@ what `packwiz url add` writes by default):
 ```sh
 cd pack
 ../tools/packwiz/packwiz.exe url add "Consortium Core" \
-  https://github.com/<owner>/consortium-core/releases/download/v0.1.0/consortium-0.1.0.jar \
+  https://github.com/<owner>/consortium-core/releases/download/v0.3.0/consortium-0.3.0.jar \
   --meta-folder mods --meta-name consortium-core
 ../tools/packwiz/packwiz.exe refresh
 ```

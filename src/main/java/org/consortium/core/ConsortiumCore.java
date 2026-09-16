@@ -10,16 +10,19 @@ import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.state.BlockBehaviour;
 import net.minecraft.world.level.material.MapColor;
 import net.minecraft.world.level.material.PushReaction;
+import net.neoforged.bus.api.EventPriority;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.ModList;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.fml.config.ModConfig;
+import net.neoforged.fml.event.config.ModConfigEvent;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.common.extensions.IMenuTypeExtension;
 import net.neoforged.neoforge.event.BuildCreativeModeTabContentsEvent;
 import net.neoforged.neoforge.event.AddReloadListenerEvent;
 import net.neoforged.neoforge.event.RegisterCommandsEvent;
+import net.neoforged.neoforge.event.ServerChatEvent;
 import net.neoforged.neoforge.event.TagsUpdatedEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
 import net.neoforged.neoforge.event.server.ServerStartedEvent;
@@ -37,10 +40,15 @@ import org.consortium.core.command.Permissions;
 import org.consortium.core.command.PricesCommand;
 import org.consortium.core.compat.ChaptersBridge;
 import org.consortium.core.compat.FtbTeamsBridge;
+import org.consortium.core.compat.LuckPermsBridge;
+import org.consortium.core.compat.VanishBridge;
 import org.consortium.core.config.CommonConfig;
 import org.consortium.core.config.ServerConfig;
 import org.consortium.core.identity.LoginHooks;
 import org.consortium.core.network.ConsortiumNetwork;
+import org.consortium.core.presence.PresenceHooks;
+import org.consortium.core.presence.PresenceService;
+import org.consortium.core.presence.PresenceTicker;
 import org.consortium.core.pricing.PriceTable;
 import org.consortium.core.pricing.PriceTableLoader;
 import org.consortium.core.shop.ShopCatalog;
@@ -66,10 +74,12 @@ import org.slf4j.LoggerFactory;
  * market, the command trees ({@code /credits}, {@code /prices}, {@code /ccore}), the API and its events, monitoring
  * and the SDLink bridge, the server-side delivery service, the Delivery Terminal block, its menu and the network
  * payloads, the Delivery Station (terminal block entity plus Display Panels) and the quota board the engine
- * publishes, the Chapters guards, the party stage copy and the shop (catalogue datapack, menu, purchase); the screens,
- * the HUD, the board renderer and the client config live behind {@link ConsortiumCoreClient}. Optional integrations (KubeJS, FTB Teams, FTB Quests, Chapters,
- * SDLink) are compile-time dependencies reached only through bridge classes behind {@link ModList#isLoaded(String)}
- * checks.
+ * publishes, the Chapters guards, the party stage copy, the shop (catalogue datapack, menu, purchase) and the presence
+ * module of v0.3 (rank prefixes in chat and in the tab list, tab header and footer, MOTD); the screens, the HUD, the
+ * board renderer and the client config live behind {@link ConsortiumCoreClient}. Optional integrations (KubeJS, FTB
+ * Teams, FTB Quests, Chapters, SDLink, LuckPerms) are compile-time dependencies reached only through bridge classes
+ * behind {@link ModList#isLoaded(String)} checks; Vanishmod is reached through one method handle. No class of any of
+ * them appears in a signature of this class.
  */
 @Mod(ConsortiumCore.MOD_ID)
 public final class ConsortiumCore {
@@ -124,6 +134,7 @@ public final class ConsortiumCore {
         BLOCK_ENTITIES.register(modBus);
         modBus.addListener(this::onRegisterPayloads);
         modBus.addListener(this::onBuildCreativeTabs);
+        modBus.addListener(this::onConfigReloading);
         ConsortiumRuntime.addBalanceListener(ConsortiumNetwork::onBalanceChanged);
 
         IEventBus bus = NeoForge.EVENT_BUS;
@@ -141,6 +152,16 @@ public final class ConsortiumCore {
         // v0.2 sections 3 and 4: each bridge registers nothing when its mod is absent.
         ChaptersBridge.install(bus);
         FtbTeamsBridge.install();
+        // v0.3 presence (5.3, 5.4): NORMAL priority on purpose, Vanishmod wraps the tab name at LOW and FTB Essentials
+        // sets its nickname at HIGHEST and its recording marker at LOWEST around this result.
+        PresenceHooks presence = new PresenceHooks();
+        bus.addListener(EventPriority.NORMAL, false, PlayerEvent.NameFormat.class, presence::onNameFormat);
+        bus.addListener(EventPriority.NORMAL, false, PlayerEvent.TabListNameFormat.class, presence::onTabListNameFormat);
+        bus.addListener(EventPriority.NORMAL, false, ServerChatEvent.class, presence::onServerChat);
+        bus.addListener(presence::onPlayerLoggedIn);
+        bus.addListener(presence::onPlayerLoggedOut);
+        PresenceTicker ticker = new PresenceTicker();
+        bus.addListener(ticker::onServerTickPost);
 
         PRICES.setDatapackListener(table -> {
             ConsortiumRuntime rt = ConsortiumRuntime.get();
@@ -191,10 +212,31 @@ public final class ConsortiumCore {
 
     private void onServerStarted(ServerStartedEvent event) {
         ModList mods = ModList.get();
-        LOGGER.info("Consortium Core starting with the server. Optional mods present: kubejs={}, ftbteams={}, ftbquests={}, chapters={}, sdlink={}",
-                mods.isLoaded("kubejs"), mods.isLoaded("ftbteams"), mods.isLoaded("ftbquests"), mods.isLoaded("chapters"), mods.isLoaded("sdlink"));
+        LOGGER.info("Consortium Core starting with the server. Optional mods present: kubejs={}, ftbteams={}, ftbquests={}, chapters={}, sdlink={}, luckperms={}, vmod={}",
+                mods.isLoaded("kubejs"), mods.isLoaded("ftbteams"), mods.isLoaded("ftbquests"), mods.isLoaded("chapters"), mods.isLoaded("sdlink"),
+                mods.isLoaded(LuckPermsBridge.MOD_ID), mods.isLoaded(VanishBridge.MOD_ID));
         ConsortiumRuntime.start(event.getServer(), PRICES);
         SHOP.audit(PRICES);
+        // v0.3: after the runtime, so the first MOTD already reads the board snapshot.
+        try {
+            PresenceService.start(event.getServer());
+        } catch (Throwable t) {
+            LOGGER.error("Presence module could not start: vanilla names, tab list and MOTD for this session", t);
+        }
+    }
+
+    /**
+     * Mod bus, any thread (the file watcher reloads a SERVER config off-thread): only a flag is set, the presence
+     * ticker re-reads the {@code [presence]} values on the server thread.
+     */
+    private void onConfigReloading(ModConfigEvent.Reloading event) {
+        if (event.getConfig().getSpec() != ServerConfig.SPEC) {
+            return;
+        }
+        PresenceService svc = PresenceService.get();
+        if (svc != null) {
+            svc.markConfigChanged();
+        }
     }
 
     private void onServerStopping(ServerStoppingEvent event) {
@@ -205,6 +247,7 @@ public final class ConsortiumCore {
     }
 
     private void onServerStopped(ServerStoppedEvent event) {
+        PresenceService.stop();
         ConsortiumRuntime.stop();
         ChaptersBridge.resetCounters();
     }

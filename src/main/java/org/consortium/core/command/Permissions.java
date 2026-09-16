@@ -29,9 +29,11 @@ public final class Permissions {
     public static final PermissionNode<Boolean> SHOP_BUY = node("shop.buy", 0, "Open the shop from a terminal and buy");
     public static final PermissionNode<Boolean> ADMIN_SHOP = node("admin.shop", 2, "List the shop catalogue and open it for a player");
     public static final PermissionNode<Boolean> ADMIN_SHOP_BUY = node("admin.shop_buy", 4, "Buy a shop entry with another player's credits");
+    /** v0.3 presence node (5.7): the preview and reload subcommands. */
+    public static final PermissionNode<Boolean> ADMIN_PRESENCE = node("admin.presence", 2, "Preview a player's presence lines and reload the presence formats");
 
     private static final List<PermissionNode<?>> ALL = List.of(CREDITS_BALANCE, CREDITS_TOP, PRICES_VIEW,
-            ADMIN_CREDITS, ADMIN_PRICES, ADMIN_LEDGER, ADMIN_REPORT, ADMIN_IDENTITY, SHOP_BUY, ADMIN_SHOP, ADMIN_SHOP_BUY);
+            ADMIN_CREDITS, ADMIN_PRICES, ADMIN_LEDGER, ADMIN_REPORT, ADMIN_IDENTITY, SHOP_BUY, ADMIN_SHOP, ADMIN_SHOP_BUY, ADMIN_PRESENCE);
 
     private Permissions() {
     }

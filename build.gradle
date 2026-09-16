@@ -51,10 +51,12 @@ repositories {
         url = 'https://api.modrinth.com/maven'
         content { includeGroup 'maven.modrinth' }
     }
-    // JUnit 5 for the pure-Java unit tests, plus Gson for the board JSON tests.
+    // JUnit 5 for the pure-Java unit tests, Gson for the board JSON tests, and the LuckPerms API (net.luckperms:api,
+    // published on Maven Central; repo.lucko.me only serves snapshots of it).
     mavenCentral {
         content {
             includeGroup 'com.google.code.gson'
+            includeGroup 'net.luckperms'
             includeGroup 'org.junit'
             includeGroup 'org.junit.jupiter'
             includeGroup 'org.junit.platform'
@@ -113,6 +115,11 @@ dependencies {
     compileOnly("com.hypherionmc.sdlink:sdlink:${sdlink_version}") { transitive = false }
     // Chapters stage engine (com.gabinx.chapters): item locks and the stage index. The Modrinth POM declares no dependencies.
     compileOnly("maven.modrinth:chapters:${chapters_version}") { transitive = false }
+    // LuckPerms API (v0.3 presence): the pinned LuckPerms-NeoForge-5.4.150.jar ships net/luckperms/api (the API 5.5 class
+    // set) unshaded at its root, so the API is on the runtime classpath exactly when the mod is loaded. compileOnly keeps
+    // it out of the jar (never shade or jar-in-jar it); the POM declares no dependencies. The bridge class is reached only
+    // behind ModList.isLoaded("luckperms"). api 5.5 matches the 5.4.x line's bundled classes; do not move to a newer major.
+    compileOnly("net.luckperms:api:${luckperms_api_version}") { transitive = false }
 
     // Same jars at runtime so runServer / runClient load them next to the mod (comment out for a vanilla-only run).
     localRuntime("dev.latvian.mods:kubejs-neoforge:${kubejs_version}") { transitive = false }

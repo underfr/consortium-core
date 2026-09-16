@@ -79,5 +79,18 @@
   "consortium.configuration.hud.delta_seconds": "Seconds the last change stays visible",
   "consortium.configuration.guards": "Chapters guards",
   "consortium.configuration.guards.placement_guard": "Placement guard",
-  "consortium.configuration.guards.instant_audit": "Instant inventory audit"
+  "consortium.configuration.guards.instant_audit": "Instant inventory audit",
+  "consortium.configuration.presence": "Presence (chat, tab list, MOTD)",
+  "consortium.configuration.presence.enabled": "Presence enabled",
+  "consortium.configuration.presence.server_name": "Server name ({server})",
+  "consortium.configuration.presence.chat_name": "Chat name format",
+  "consortium.configuration.presence.chat_body_style": "Chat body style codes",
+  "consortium.configuration.presence.tab_name": "Tab list name format",
+  "consortium.configuration.presence.tab_header": "Tab list header",
+  "consortium.configuration.presence.tab_footer": "Tab list footer",
+  "consortium.configuration.presence.tab_refresh_ticks": "Tab refresh period (ticks)",
+  "consortium.configuration.presence.motd_enabled": "Server list MOTD enabled",
+  "consortium.configuration.presence.motd_line1": "MOTD first line",
+  "consortium.configuration.presence.motd_line2": "MOTD second line",
+  "consortium.configuration.presence.motd_refresh_ticks": "MOTD refresh period (ticks)"
 }

@@ -61,3 +61,11 @@ description='''${mod_description}'''
     versionRange="[3.4.0,)"
     ordering="AFTER"
     side="SERVER"
+
+# LuckPerms (v0.3 presence): rank prefixes, group and rank colour; the presence module renders plain names without it.
+[[dependencies.${mod_id}]]
+    modId="luckperms"
+    type="optional"
+    versionRange="[5.4.150,)"
+    ordering="AFTER"
+    side="SERVER"

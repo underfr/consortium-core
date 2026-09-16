@@ -2,6 +2,7 @@ package org.consortium.core.config;
 
 import net.neoforged.neoforge.common.ModConfigSpec;
 import org.consortium.core.economy.Money;
+import org.consortium.core.presence.PresenceFormats;
 import org.consortium.core.pricing.PriceDefaults;
 import org.consortium.core.terminal.CommandTemplate;
 
@@ -24,6 +25,19 @@ public final class ServerConfig {
     private static final ModConfigSpec.ConfigValue<String> CONTRIBUTE_COMMAND;
     private static final ModConfigSpec.BooleanValue PLACEMENT_GUARD;
     private static final ModConfigSpec.BooleanValue INSTANT_AUDIT;
+    // [presence] (v0.3, 5.1)
+    private static final ModConfigSpec.BooleanValue PRESENCE_ENABLED;
+    private static final ModConfigSpec.ConfigValue<String> PRESENCE_SERVER_NAME;
+    private static final ModConfigSpec.ConfigValue<String> PRESENCE_CHAT_NAME;
+    private static final ModConfigSpec.ConfigValue<String> PRESENCE_CHAT_BODY_STYLE;
+    private static final ModConfigSpec.ConfigValue<String> PRESENCE_TAB_NAME;
+    private static final ModConfigSpec.ConfigValue<String> PRESENCE_TAB_HEADER;
+    private static final ModConfigSpec.ConfigValue<String> PRESENCE_TAB_FOOTER;
+    private static final ModConfigSpec.IntValue PRESENCE_TAB_REFRESH_TICKS;
+    private static final ModConfigSpec.BooleanValue PRESENCE_MOTD_ENABLED;
+    private static final ModConfigSpec.ConfigValue<String> PRESENCE_MOTD_LINE1;
+    private static final ModConfigSpec.ConfigValue<String> PRESENCE_MOTD_LINE2;
+    private static final ModConfigSpec.IntValue PRESENCE_MOTD_REFRESH_TICKS;
 
     /** What happens when a new account's connection already received the starting capital. */
     public enum MultiAccountGrant {
@@ -64,6 +78,39 @@ public final class ServerConfig {
         INSTANT_AUDIT = b.comment("Drop a locked item the moment it lands in a player's inventory (same tick as the click or",
                         "the give) instead of waiting for Chapters' one-second sweep.")
                 .define("instant_audit", true);
+        b.pop();
+        b.comment("Presence (v0.3): rank prefixes in chat and in the tab list, tab header and footer, server list MOTD.",
+                        "Every string accepts &x and section-sign colour codes (0-9 a-f colours, k l m n o formats, r reset),",
+                        "&#rrggbb hex colours (not in the MOTD: the server list only renders the 16 legacy colours) and \\n",
+                        "for a new line in the header, the footer and the MOTD. Placeholders: {server} {phase} {phase_name}",
+                        "{day} {days} (last quota board snapshot), {name} {prefix} {suffix} {group} {rank_color} (LuckPerms:",
+                        "highest-weight prefix and suffix, primary group display name, meta rank.color), {credits} {currency}",
+                        "(the viewer's balance), {tps} {mspt} {online} {max}. Unknown tokens stay verbatim. Names refresh on",
+                        "rank change, login and reload only, so keep {credits} and {tps} in the header and footer.",
+                        "The chat line body is never rewritten: the pack forbids cancelling the chat event (signed chat).",
+                        "Edits are picked up by the file watcher; 'ccore presence reload' applies them at once.")
+                .push("presence");
+        PRESENCE_ENABLED = b.comment("false = vanilla names, tab list and MOTD").define("enabled", true);
+        PRESENCE_SERVER_NAME = b.comment("Value of {server}").define("server_name", PresenceFormats.DEFAULT_SERVER_NAME);
+        PRESENCE_CHAT_NAME = b.comment("The sender part of every chat, join, leave, death, /say and /me line; {name} is the display",
+                        "name an earlier listener may have set (a nickname), so keep it in the format")
+                .define("chat_name", PresenceFormats.DEFAULT_CHAT_NAME);
+        PRESENCE_CHAT_BODY_STYLE = b.comment("Codes only (e.g. &f or &7) applied to the body of chat messages; empty = the vanilla body",
+                        "untouched; the LuckPerms meta chat.style overrides it per group")
+                .define("chat_body_style", PresenceFormats.DEFAULT_CHAT_BODY_STYLE);
+        PRESENCE_TAB_NAME = b.comment("The tab list entry; {name} is the profile name").define("tab_name", PresenceFormats.DEFAULT_TAB_NAME);
+        PRESENCE_TAB_HEADER = b.comment("Tab list header, rendered per viewer").define("tab_header", PresenceFormats.DEFAULT_TAB_HEADER);
+        PRESENCE_TAB_FOOTER = b.comment("Tab list footer, rendered per viewer").define("tab_footer", PresenceFormats.DEFAULT_TAB_FOOTER);
+        PRESENCE_TAB_REFRESH_TICKS = b.comment("Ticks between two header and footer renders (a packet leaves only when the text changed)")
+                .defineInRange("tab_refresh_ticks", PresenceFormats.DEFAULT_TAB_REFRESH_TICKS, PresenceFormats.MIN_TAB_REFRESH_TICKS,
+                        PresenceFormats.MAX_TAB_REFRESH_TICKS);
+        PRESENCE_MOTD_ENABLED = b.comment("false leaves the server.properties MOTD alone").define("motd_enabled", true);
+        PRESENCE_MOTD_LINE1 = b.comment("First line of the server list description (no rank: the status ping is anonymous)")
+                .define("motd_line1", PresenceFormats.DEFAULT_MOTD_LINE1);
+        PRESENCE_MOTD_LINE2 = b.comment("Second line of the server list description").define("motd_line2", PresenceFormats.DEFAULT_MOTD_LINE2);
+        PRESENCE_MOTD_REFRESH_TICKS = b.comment("Ticks between two MOTD renders (100 = the vanilla status rebuild cadence)")
+                .defineInRange("motd_refresh_ticks", PresenceFormats.DEFAULT_MOTD_REFRESH_TICKS, PresenceFormats.MIN_MOTD_REFRESH_TICKS,
+                        PresenceFormats.MAX_MOTD_REFRESH_TICKS);
         b.pop();
         SPEC = b.build();
     }
@@ -107,5 +154,16 @@ public final class ServerConfig {
     /** Guard 2 of v0.2 section 3 (needs Chapters). */
     public static boolean instantAudit() {
         return !loaded() || INSTANT_AUDIT.get();
+    }
+
+    /** One immutable snapshot of {@code [presence]} (v0.3, 5.1); the defaults while the config is not loaded. */
+    public static PresenceFormats presence() {
+        if (!loaded()) {
+            return PresenceFormats.DEFAULTS;
+        }
+        return new PresenceFormats(PRESENCE_ENABLED.get(), PRESENCE_SERVER_NAME.get(), PRESENCE_CHAT_NAME.get(),
+                PRESENCE_CHAT_BODY_STYLE.get(), PRESENCE_TAB_NAME.get(), PRESENCE_TAB_HEADER.get(), PRESENCE_TAB_FOOTER.get(),
+                PRESENCE_TAB_REFRESH_TICKS.get(), PRESENCE_MOTD_ENABLED.get(), PRESENCE_MOTD_LINE1.get(), PRESENCE_MOTD_LINE2.get(),
+                PRESENCE_MOTD_REFRESH_TICKS.get());
     }
 }
