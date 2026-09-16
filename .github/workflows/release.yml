@@ -1,0 +1,53 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and publish the GitHub Release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Check that the tag matches mod_version
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          version="$(grep -E '^mod_version=' gradle.properties | cut -d= -f2 | tr -d '[:space:]')"
+          if [ "$tag" != "$version" ]; then
+            echo "Tag v$tag does not match mod_version=$version in gradle.properties" >&2
+            exit 1
+          fi
+
+      - name: Build (compiles the mod and runs the unit tests)
+        run: |
+          chmod +x gradlew
+          ./gradlew build --no-daemon --console=plain
+
+      - name: List the release asset
+        run: ls -l build/libs/
+
+      - name: Create the GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Consortium Core ${{ github.ref_name }}
+          body_path: .github/RELEASE_NOTES.md
+          files: build/libs/consortium-*.jar
+          fail_on_unmatched_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,0 +1,3 @@
+# KubeJS global bindings (format: <script type> <name> <class>): the static API as "ConsortiumCore" in server scripts.
+# Named ConsortiumCore on purpose: the pack's phase engine (consortium_phases.js) keeps its own script-level "Consortium" object.
+server ConsortiumCore org.consortium.core.api.ConsortiumAPI

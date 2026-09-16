@@ -1,0 +1,8 @@
+{
+  "variants": {
+    "facing=north": { "model": "consortium:block/delivery_terminal" },
+    "facing=east": { "model": "consortium:block/delivery_terminal", "y": 90 },
+    "facing=south": { "model": "consortium:block/delivery_terminal", "y": 180 },
+    "facing=west": { "model": "consortium:block/delivery_terminal", "y": 270 }
+  }
+}

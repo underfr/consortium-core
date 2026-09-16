@@ -1,0 +1,12 @@
+pluginManagement {
+    repositories {
+        gradlePluginPortal()
+    }
+}
+
+plugins {
+    // Auto-provisions a JDK 21 toolchain (Temurin via foojay) when the host only has another JDK, e.g. JDK 25.
+    id 'org.gradle.toolchains.foojay-resolver-convention' version '1.0.0'
+}
+
+rootProject.name = 'consortium-core'

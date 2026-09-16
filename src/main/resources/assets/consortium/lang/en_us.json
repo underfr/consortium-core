@@ -1,0 +1,35 @@
+{
+  "block.consortium.delivery_terminal": "Delivery Terminal",
+  "item.consortium.delivery_terminal.tooltip": "Sell to the Consortium",
+  "container.consortium.delivery_terminal": "Delivery Terminal",
+
+  "gui.consortium.terminal.balance": "Balance: %s",
+  "gui.consortium.terminal.column.family": "Item",
+  "gui.consortium.terminal.column.units": "Units",
+  "gui.consortium.terminal.column.unit": "Avg",
+  "gui.consortium.terminal.column.subtotal": "Subtotal",
+  "gui.consortium.terminal.empty": "Place items in the grid to get a quote",
+  "gui.consortium.terminal.total": "Total: %s",
+  "gui.consortium.terminal.more": "+%s more",
+  "gui.consortium.terminal.quota_only": "quota only",
+  "gui.consortium.terminal.paid": "%s paid",
+  "gui.consortium.terminal.quota": "%s quota only",
+  "gui.consortium.terminal.multiplier": "x%s %%",
+  "gui.consortium.terminal.deliver": "Deliver",
+  "gui.consortium.terminal.cancel": "Cancel",
+  "gui.consortium.terminal.waiting": "Waiting for the quote...",
+  "gui.consortium.terminal.refused": "Refused: %s",
+
+  "gui.consortium.hud.credits": "Credits: %s",
+
+  "key.categories.consortium": "Consortium",
+  "key.consortium.toggle_hud": "Toggle credits HUD",
+
+  "consortium.configuration.title": "Consortium Core",
+  "consortium.configuration.hud": "Credits HUD",
+  "consortium.configuration.hud.enabled": "Show the credits line",
+  "consortium.configuration.hud.corner": "Corner",
+  "consortium.configuration.hud.offset_x": "Horizontal offset",
+  "consortium.configuration.hud.offset_y": "Vertical offset",
+  "consortium.configuration.hud.delta_seconds": "Seconds the last change stays visible"
+}

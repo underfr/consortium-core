@@ -1,0 +1,167 @@
+plugins {
+    id 'java-library'
+    id 'idea'
+    id 'net.neoforged.moddev' version '2.0.147'
+}
+
+tasks.named('wrapper', Wrapper).configure {
+    distributionType = Wrapper.DistributionType.BIN
+}
+
+version = mod_version
+group = mod_group_id
+
+base {
+    archivesName = mod_id
+}
+
+// Mojang ships Java 21 to end users in 1.21.1, so the mod targets Java 21.
+// The foojay plugin in settings.gradle downloads a JDK 21 if the host only has another JDK (the dev box runs JDK 25).
+java.toolchain.languageVersion = JavaLanguageVersion.of(21)
+
+repositories {
+    // KubeJS and Rhino (dev.latvian.mods). maven.latvian.dev/releases serves the same artifacts.
+    maven {
+        name = 'Saps'
+        url = 'https://maven.saps.dev/releases'
+        content { includeGroup 'dev.latvian.mods'; includeGroup 'dev.latvian.apps' }
+    }
+    // FTB Library / Teams / Quests (dev.ftb.mods), same URLs the pack downloads the jars from.
+    maven {
+        name = 'FTB'
+        url = 'https://maven.ftb.dev/releases'
+        content { includeGroup 'dev.ftb.mods' }
+    }
+    // Architectury API (dev.architectury), required by the FTB mods at runtime and for their event classes.
+    maven {
+        name = 'Architectury'
+        url = 'https://maven.architectury.dev/'
+        content { includeGroup 'dev.architectury' }
+    }
+    // Simple Discord Link API (com.hypherionmc.sdlink), optional server-side relay of alerts and reports.
+    maven {
+        name = 'FirstDark'
+        url = 'https://maven.firstdark.dev/releases'
+        content { includeGroup 'com.hypherionmc.sdlink' }
+    }
+    // JUnit 5 for the pure-Java unit tests.
+    mavenCentral {
+        content {
+            includeGroup 'org.junit'
+            includeGroup 'org.junit.jupiter'
+            includeGroup 'org.junit.platform'
+            includeGroup 'org.opentest4j'
+            includeGroup 'org.apiguardian'
+        }
+    }
+}
+
+neoForge {
+    version = project.neo_version
+
+    parchment {
+        mappingsVersion = project.parchment_mappings_version
+        minecraftVersion = project.parchment_minecraft_version
+    }
+
+    runs {
+        client {
+            client()
+        }
+        server {
+            server()
+            programArgument '--nogui'
+        }
+        configureEach {
+            systemProperty 'forge.logging.markers', 'REGISTRIES'
+            logLevel = org.slf4j.event.Level.DEBUG
+        }
+    }
+
+    mods {
+        "${mod_id}" {
+            sourceSet(sourceSets.main)
+        }
+    }
+}
+
+// 'localRuntime': on the classpath of runClient / runServer only, never published as a dependency of the mod.
+configurations {
+    runtimeClasspath.extendsFrom localRuntime
+}
+
+dependencies {
+    // Optional integrations: compile against the pack's exact versions, never bundled in the jar.
+    // 'transitive = false' keeps the POM-declared (older) versions of Rhino / FTB Library / Architectury
+    // and the JitPack runtime deps of KubeJS from being resolved next to the pinned ones.
+    compileOnly("dev.latvian.mods:kubejs-neoforge:${kubejs_version}") { transitive = false }
+    compileOnly("dev.latvian.mods:rhino:${rhino_version}") { transitive = false }
+    compileOnly("dev.architectury:architectury-neoforge:${architectury_version}") { transitive = false }
+    compileOnly("dev.ftb.mods:ftb-library-neoforge:${ftb_library_version}") { transitive = false }
+    compileOnly("dev.ftb.mods:ftb-teams-neoforge:${ftb_teams_version}") { transitive = false }
+    compileOnly("dev.ftb.mods:ftb-quests-neoforge:${ftb_quests_version}") { transitive = false }
+    // SDLink is server-only in the pack and never on the dev runtime classpath (it needs CraterLib and a bot token);
+    // the bridge class is reached only behind ModList.isLoaded("sdlink").
+    compileOnly("com.hypherionmc.sdlink:sdlink:${sdlink_version}") { transitive = false }
+
+    // Same jars at runtime so runServer / runClient load them next to the mod (comment out for a vanilla-only run).
+    localRuntime("dev.latvian.mods:kubejs-neoforge:${kubejs_version}") { transitive = false }
+    localRuntime("dev.latvian.mods:rhino:${rhino_version}") { transitive = false }
+    localRuntime("dev.architectury:architectury-neoforge:${architectury_version}") { transitive = false }
+    localRuntime("dev.ftb.mods:ftb-library-neoforge:${ftb_library_version}") { transitive = false }
+    localRuntime("dev.ftb.mods:ftb-teams-neoforge:${ftb_teams_version}") { transitive = false }
+    localRuntime("dev.ftb.mods:ftb-quests-neoforge:${ftb_quests_version}") { transitive = false }
+
+    // Unit tests: pure Java, no Minecraft classes on the test classpath.
+    testImplementation platform("org.junit:junit-bom:${junit_version}")
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+// Expand the placeholders of src/main/templates (neoforge.mods.toml) at build time.
+// Every key used in a template must be listed here; an unknown key fails the build.
+var generateModMetadata = tasks.register('generateModMetadata', ProcessResources) {
+    var replaceProperties = [
+            minecraft_version      : minecraft_version,
+            minecraft_version_range: minecraft_version_range,
+            neo_version            : neo_version,
+            neo_version_range      : neo_version_range,
+            loader_version_range   : loader_version_range,
+            mod_id                 : mod_id,
+            mod_name               : mod_name,
+            mod_license            : mod_license,
+            mod_version            : mod_version,
+            mod_authors            : mod_authors,
+            mod_description        : mod_description,
+    ]
+    inputs.properties replaceProperties
+    expand replaceProperties
+    from 'src/main/templates'
+    into 'build/generated/sources/modMetadata'
+}
+sourceSets.main.resources.srcDir generateModMetadata
+neoForge.ideSyncTask generateModMetadata
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+}
+
+tasks.named('test', Test).configure {
+    useJUnitPlatform()
+    testLogging {
+        events 'failed', 'skipped'
+        exceptionFormat = 'full'
+    }
+}
+
+idea {
+    module {
+        downloadSources = true
+        downloadJavadoc = true
+    }
+}
+
+// Forward the console to the dedicated dev server so "stop" (typed or piped in) shuts it down cleanly.
+tasks.named('runServer') {
+    standardInput = System.in
+}
