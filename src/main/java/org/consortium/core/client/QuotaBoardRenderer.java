@@ -22,9 +22,13 @@ import org.joml.Matrix4f;
 import java.util.Map;
 import java.util.WeakHashMap;
 
+import static org.consortium.core.client.BoardLayout.AMBER;
 import static org.consortium.core.client.BoardLayout.BACKGROUND;
-import static org.consortium.core.client.BoardLayout.BODY_TOP;
 import static org.consortium.core.client.BoardLayout.CHECK_BOX;
+import static org.consortium.core.client.BoardLayout.EVENT_BAND;
+import static org.consortium.core.client.BoardLayout.EVENT_H;
+import static org.consortium.core.client.BoardLayout.EVENT_TEXT_Y;
+import static org.consortium.core.client.BoardLayout.EVENT_TOP;
 import static org.consortium.core.client.BoardLayout.GREEN;
 import static org.consortium.core.client.BoardLayout.HEADER;
 import static org.consortium.core.client.BoardLayout.HEADER_H;
@@ -58,7 +62,7 @@ import static org.consortium.core.client.BoardLayout.wideCounterRight;
  * {@code Font.DisplayMode.POLYGON_OFFSET} (coplanar with the panel without z-fighting, as the text display does),
  * then the item icons (fixed buffers, drawn at the end of the frame, clipped behind the panel by its depth write).
  * The screen glows: {@code FULL_BRIGHT}. The renderer owns the per-entity cache; {@code render()} allocates nothing
- * but pose pushes once the entry exists.
+ * but pose pushes once the entry exists (the event countdown text is rebuilt once per second, v0.3.1).
  */
 public final class QuotaBoardRenderer implements BlockEntityRenderer<DeliveryTerminalBlockEntity> {
     private static final float PX = 1.0F / PX_PER_BLOCK;
@@ -109,7 +113,8 @@ public final class QuotaBoardRenderer implements BlockEntityRenderer<DeliveryTer
         if (level == null || !be.hasScreen()) {
             return;
         }
-        BoardRenderCache entry = entry(be);
+        long eventSeconds = ClientBoard.eventRemainingSeconds();
+        BoardRenderCache entry = entry(be, ClientBoard.visibleEvent() != null);
         BoardLayout.Metrics m = entry.metrics;
         Direction facing = be.screenFacing();
         int height = be.screenHeight();
@@ -145,6 +150,9 @@ public final class QuotaBoardRenderer implements BlockEntityRenderer<DeliveryTer
         VertexConsumer quads = buffers.getBuffer(RenderType.textBackground());
         fill(quads, pose, 0, 0, w, h, Z_BACKGROUND, BACKGROUND);
         fill(quads, pose, 0, 0, w, HEADER_H, Z_BAND, HEADER);
+        if (m.hasEventBand()) {
+            fill(quads, pose, 0, EVENT_TOP, w, EVENT_TOP + EVENT_H, Z_BAND, EVENT_BAND);
+        }
         for (int i = first; i < last; i++) {
             BoardRenderCache.Row row = entry.rows.get(i);
             int y = m.rowY(i - first);
@@ -189,8 +197,12 @@ public final class QuotaBoardRenderer implements BlockEntityRenderer<DeliveryTer
         if (entry.pageLabels.length > 0 && page < entry.pageLabels.length) {
             text(entry.pageLabels[page], w - PAD - entry.pageLabelWidths[page], HEADER_LINE_2_Y, TEXT, textPose, buffers);
         }
+        FormattedCharSequence eventText = entry.eventText(font, eventSeconds);
+        if (eventText != null) {
+            text(eventText, PAD, EVENT_TEXT_Y, AMBER, textPose, buffers);
+        }
         if (entry.message != null) {
-            text(entry.message, (w - entry.messageWidth) / 2.0F, BODY_TOP + (m.bodyHeight() - LINE_HEIGHT) / 2.0F, MUTED, textPose, buffers);
+            text(entry.message, (w - entry.messageWidth) / 2.0F, m.bodyTop() + (m.bodyHeight() - LINE_HEIGHT) / 2.0F, MUTED, textPose, buffers);
         }
         for (int i = first; i < last; i++) {
             BoardRenderCache.Row row = entry.rows.get(i);
@@ -222,12 +234,12 @@ public final class QuotaBoardRenderer implements BlockEntityRenderer<DeliveryTer
         poseStack.popPose();
     }
 
-    private BoardRenderCache entry(DeliveryTerminalBlockEntity be) {
+    private BoardRenderCache entry(DeliveryTerminalBlockEntity be, boolean eventBand) {
         // Compared field by field so a frame with an up-to-date entry allocates nothing (review 2026-09-16).
         BoardRenderCache entry = cache.get(be);
-        if (entry == null || !entry.stamp.matches(ClientBoard.generation(), be.syncRevision(), be.screenWidth(), be.screenHeight(), be.screenFacing())) {
+        if (entry == null || !entry.stamp.matches(ClientBoard.generation(), be.syncRevision(), be.screenWidth(), be.screenHeight(), be.screenFacing(), eventBand)) {
             BoardRenderCache.Stamp stamp = new BoardRenderCache.Stamp(ClientBoard.generation(), be.syncRevision(), be.screenWidth(),
-                    be.screenHeight(), be.screenFacing());
+                    be.screenHeight(), be.screenFacing(), eventBand);
             entry = BoardRenderCache.build(font, stamp, ClientBoard.snapshot());
             cache.put(be, entry);
         }

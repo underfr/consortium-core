@@ -156,21 +156,23 @@ public final class PresenceService {
         return Placeholders.tokens(format).contains("name") ? format : format + "{name}";
     }
 
-    /** The header and footer for one viewer, rendered but not sent. */
+    /** The header and footer for one viewer, rendered but not sent; a line empty after expansion is dropped (v0.3.1). */
     public HeaderFooter headerFooter(ServerPlayer player) {
         PresenceContext ctx = PresenceContext.ofPlayer(server, formats, player, null);
-        String header = Placeholders.expand(formats.tabHeader(), ctx::resolve);
-        String footer = Placeholders.expand(formats.tabFooter(), ctx::resolve);
+        String header = LegacyText.dropBlankLines(Placeholders.expand(formats.tabHeader(), ctx::resolve));
+        String footer = LegacyText.dropBlankLines(Placeholders.expand(formats.tabFooter(), ctx::resolve));
         return new HeaderFooter(header, footer, SpanComponents.toComponent(LegacyText.parse(header)),
                 SpanComponents.toComponent(LegacyText.parse(footer)));
     }
 
-    /** The two MOTD lines as one legacy string (5.5); hex colours dropped with one WARN per reload. */
+    /**
+     * The two MOTD lines as one legacy string (5.5); hex colours dropped with one WARN per reload. A line empty after
+     * expansion is dropped and the result is capped at two lines (v0.3.1).
+     */
     public String motd() {
         PresenceContext ctx = PresenceContext.ofServer(server, formats);
-        List<Span> line1 = LegacyText.parse(Placeholders.expand(formats.motdLine1(), ctx::resolve));
-        List<Span> line2 = LegacyText.parse(Placeholders.expand(formats.motdLine2(), ctx::resolve));
-        MotdText.Rendered rendered = MotdText.render(line1, line2);
+        String expanded = Placeholders.expand(formats.motdLine1(), ctx::resolve) + "\n" + Placeholders.expand(formats.motdLine2(), ctx::resolve);
+        MotdText.Rendered rendered = MotdText.renderLines(MotdText.lines(expanded));
         if (rendered.droppedHex() > 0 && !warnedHex) {
             warnedHex = true;
             ConsortiumCore.LOGGER.warn("MOTD formats use {} hex colour(s): the server list only renders the 16 legacy colours, they were dropped",

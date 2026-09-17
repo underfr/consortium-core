@@ -17,7 +17,7 @@ import javax.annotation.Nullable;
  * @param command     the template ({@code {player}}, {@code {uuid}}, {@code {tx}}), null for an item entry
  * @param icon        what the screen shows: the sold stack, or the {@code icon} item
  * @param priceCents  0.01 to 1,000,000.00 credits
- * @param dailyLimit  purchases per player per UTC day, 0 = unlimited
+ * @param dailyLimit  purchases per player per market day (reset at [market] day_boundary_hour server time), 0 = unlimited
  * @param stage       the Chapters stage the buyer's team must hold, null when ungated
  * @param phase       the board phase from which the entry sells, 0 when ungated
  * @param source      the datapack file that defined it

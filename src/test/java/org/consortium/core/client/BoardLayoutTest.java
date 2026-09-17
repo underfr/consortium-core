@@ -91,4 +91,32 @@ class BoardLayoutTest {
         assertEquals(BoardLayout.State.ON_TRACK, BoardLayout.State.of(0.9, false));
         assertEquals(BoardLayout.GREEN, BoardLayout.State.DONE.color);
     }
+
+    @Test
+    void eventBandMovesTheBodyDownByTenPixels() {
+        BoardLayout.Metrics plain = BoardLayout.compute(5, 3, 8);
+        BoardLayout.Metrics event = BoardLayout.compute(5, 3, 8, true);
+        assertEquals(false, plain.hasEventBand());
+        assertEquals(true, event.hasEventBand());
+        assertEquals(BoardLayout.BODY_TOP, plain.bodyTop());
+        assertEquals(BoardLayout.BODY_TOP + BoardLayout.EVENT_H, event.bodyTop());
+        assertEquals(36, event.bodyTop());
+        assertEquals(154, event.bodyHeight());
+        assertEquals(8, event.rowsPerPage());
+        assertEquals(19, event.pitch());
+        assertEquals(1, event.pages());
+        assertEquals(36, event.rowY(0));
+        assertEquals(55, event.rowY(1));
+        assertEquals(26, plain.rowY(0));
+        // Compact 3 x 2 with the band: 90 px of body, 3 rows per page, 8 lines on 3 pages.
+        BoardLayout.Metrics compact = BoardLayout.compute(3, 2, 8, true);
+        assertEquals(90, compact.bodyHeight());
+        assertEquals(3, compact.rowsPerPage());
+        assertEquals(3, compact.pages());
+        assertEquals(BoardLayout.EVENT_TOP, BoardLayout.HEADER_H);
+        assertEquals("Ore Rush - x2 on raw deliveries - 41:00", BoardLayout.eventText("Ore Rush", "x2 on raw deliveries", 2460, false));
+        assertEquals("Ore Rush - 41:00", BoardLayout.eventText("Ore Rush", "x2 on raw deliveries", 2460, true));
+        assertEquals("Friday Zone", BoardLayout.eventText("Friday Zone", "", -1, false));
+        assertEquals("Blood Moon - at dusk", BoardLayout.eventText("Blood Moon", "at dusk", -1, false));
+    }
 }

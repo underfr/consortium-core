@@ -67,6 +67,7 @@ public final class PresenceContext {
         v.put("phase_name", board == null ? NO_SNAPSHOT_PHASE_NAME : clean(board.name()));
         v.put("day", board == null ? "0" : Integer.toString(board.day()));
         v.put("days", board == null ? "0" : Integer.toString(board.days()));
+        v.put("event", board == null || board.event() == null ? "" : clean(board.event().presenceText(elapsedSincePublish())));
         v.put("currency", clean(CommonConfig.currencySymbol()));
         double mspt = TpsMath.mspt(server.getAverageTickTimeNanos());
         v.put("tps", TpsMath.formatTps(TpsMath.tps(mspt, server.tickRateManager().millisecondsPerTick())));
@@ -91,6 +92,13 @@ public final class PresenceContext {
         ConsortiumRuntime rt = ConsortiumRuntime.get();
         return rt == null ? null : rt.board.current();
     }
+
+    /** Milliseconds since the current snapshot was published (0 without a runtime). */
+    private static long elapsedSincePublish() {
+        ConsortiumRuntime rt = ConsortiumRuntime.get();
+        return rt == null ? 0 : Math.max(0L, rt.now() - rt.board.publishedAt());
+    }
+
 
     /** A value never carries the name mark: a prefix containing it cannot splice the name component a second time. */
     private static String clean(String s) {

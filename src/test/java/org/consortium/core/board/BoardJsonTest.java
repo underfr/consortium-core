@@ -133,4 +133,76 @@ class BoardJsonTest {
         BoardJson.Result trimmed = parse("{\"phase\":3,\"day\":40,\"days\":84,\"name\":\"  " + "N".repeat(60) + "  \"}");
         assertEquals(BoardSnapshot.MAX_NAME, trimmed.snapshot().name().length());
     }
+
+    @Test
+    void eventObjectIsOptionalValidatedAndCanonical() {
+        // No event: the canonical form is byte-identical to 0.3.0 (payload dedupe stays intact).
+        assertNull(parse(GOOD).snapshot().event());
+        assertNull(parse("{\"event\":null," + GOOD.substring(1)).snapshot().event());
+        assertEquals(GOOD, parse("{\"event\":null," + GOOD.substring(1)).snapshot().toJson());
+        assertTrue(warnings.isEmpty(), warnings.toString());
+
+        String withEvent = GOOD.substring(0, GOOD.length() - 1)
+                + ",\"event\":{\"name\":\"Ore Rush\",\"detail\":\"x2 on raw deliveries\",\"seconds_left\":2460}}";
+        BoardJson.Result r = parse(withEvent);
+        assertTrue(r.accepted(), r.refusal());
+        BoardSnapshot.Event e = r.snapshot().event();
+        assertNotNull(e);
+        assertEquals("Ore Rush", e.name());
+        assertEquals("x2 on raw deliveries", e.detail());
+        assertEquals(2460, e.secondsLeft());
+        assertTrue(e.hasCountdown());
+        assertEquals(withEvent, r.snapshot().toJson());
+        assertTrue(warnings.isEmpty(), warnings.toString());
+
+        // Not an object: one warning, no event, the publish is still accepted.
+        BoardJson.Result notObject = parse(GOOD.substring(0, GOOD.length() - 1) + ",\"event\":\"Ore Rush\"}");
+        assertTrue(notObject.accepted());
+        assertNull(notObject.snapshot().event());
+        assertTrue(warnings.stream().anyMatch(w -> w.contains("event is not an object")), warnings.toString());
+        warnings.clear();
+
+        // Empty name: dropped with a warning. Missing detail and seconds: empty detail, no countdown.
+        assertNull(parse(GOOD.substring(0, GOOD.length() - 1) + ",\"event\":{\"name\":\"   \",\"seconds_left\":10}}").snapshot().event());
+        assertTrue(warnings.stream().anyMatch(w -> w.contains("no usable name")), warnings.toString());
+        warnings.clear();
+        BoardSnapshot.Event bare = parse(GOOD.substring(0, GOOD.length() - 1) + ",\"event\":{\"name\":\"Blood Moon\"}}").snapshot().event();
+        assertNotNull(bare);
+        assertEquals("", bare.detail());
+        assertEquals(0, bare.secondsLeft());
+        assertFalse(bare.hasCountdown());
+        assertTrue(warnings.isEmpty(), warnings.toString());
+
+        // Truncation and clamping: name 32, detail 48, seconds 0..604,800 (a fraction or a string means 0).
+        BoardSnapshot.Event big = parse(GOOD.substring(0, GOOD.length() - 1) + ",\"event\":{\"name\":\"" + "N".repeat(50)
+                + "\",\"detail\":\"" + "D".repeat(70) + "\",\"seconds_left\":9999999}}").snapshot().event();
+        assertEquals(BoardSnapshot.MAX_EVENT_NAME, big.name().length());
+        assertEquals(BoardSnapshot.MAX_EVENT_DETAIL, big.detail().length());
+        assertEquals(BoardSnapshot.MAX_EVENT_SECONDS, big.secondsLeft());
+        assertEquals(0, parse(GOOD.substring(0, GOOD.length() - 1) + ",\"event\":{\"name\":\"x\",\"seconds_left\":-5}}").snapshot().event().secondsLeft());
+        assertEquals(0, parse(GOOD.substring(0, GOOD.length() - 1) + ",\"event\":{\"name\":\"x\",\"seconds_left\":1.5}}").snapshot().event().secondsLeft());
+        assertEquals(0, parse(GOOD.substring(0, GOOD.length() - 1) + ",\"event\":{\"name\":\"x\",\"seconds_left\":\"12\"}}").snapshot().event().secondsLeft());
+    }
+
+    @Test
+    void eventCountdownRunsOutOnTheClientAndInPresence() {
+        BoardSnapshot.Event e = new BoardSnapshot.Event("Ore Rush", "x2 on raw deliveries", 2460);
+        assertEquals(2460, e.remainingSeconds(0));
+        assertEquals(2400, e.remainingSeconds(60_000));
+        assertEquals(0, e.remainingSeconds(2_460_000));
+        assertTrue(e.visible(2_459_000));
+        assertFalse(e.visible(2_460_000));
+        assertEquals("Ore Rush (41 min)", e.presenceText(0));
+        assertEquals("Ore Rush (40 min)", e.presenceText(60_000));
+        assertEquals("Ore Rush (1 min)", e.presenceText(2_459_000));
+        assertEquals("", e.presenceText(2_460_000));
+        assertEquals("41:00", BoardSnapshot.Event.clock(e.remainingSeconds(0)));
+        assertEquals("0:05", BoardSnapshot.Event.clock(5));
+        assertEquals("1:02:03", BoardSnapshot.Event.clock(3723));
+        // No countdown: always visible, no timer in the texts.
+        BoardSnapshot.Event staff = new BoardSnapshot.Event("Friday Zone", "", 0);
+        assertEquals(-1, staff.remainingSeconds(999_999_999));
+        assertTrue(staff.visible(999_999_999));
+        assertEquals("Friday Zone", staff.presenceText(999_999_999));
+    }
 }

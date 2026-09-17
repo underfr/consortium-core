@@ -15,6 +15,8 @@ import org.consortium.core.compat.ChaptersBridge;
 import org.consortium.core.config.CommonConfig;
 import org.consortium.core.economy.Account;
 import org.consortium.core.economy.Money;
+import org.consortium.core.config.ServerConfig;
+import org.consortium.core.economy.DayKey;
 import org.consortium.core.economy.Transactions;
 import org.consortium.core.monitoring.Notifier;
 import org.consortium.core.network.ConsortiumNetwork;
@@ -97,7 +99,7 @@ public final class ShopService {
     public static ShopCatalogPayload catalog(ServerPlayer player, long nonce) {
         ConsortiumRuntime rt = ConsortiumRuntime.get();
         long now = rt == null ? System.currentTimeMillis() : rt.now();
-        String day = Transactions.utcDayOf(now);
+        String day = Transactions.capDayOf(now);
         Account account = rt == null ? null : rt.economy.account(player.getUUID());
         int phase = ConsortiumAPI.boardPhase();
         List<ShopCatalogPayload.Entry> out = new ArrayList<>();
@@ -173,11 +175,11 @@ public final class ShopService {
             return finish(player, false, refused("phase", entry.phase()), null);
         }
         long now = rt.now();
-        String day = Transactions.utcDayOf(now);
+        String day = Transactions.capDayOf(now);
         String name = player.getGameProfile().getName();
         Account account = rt.economy.getOrCreate(player.getUUID(), name);
         if (entry.dailyLimit() > 0 && account.boughtToday(entry.key(), day) >= entry.dailyLimit()) {
-            return finish(player, false, refused("limit", entry.dailyLimit()), null);
+            return finish(player, false, refused("limit", entry.dailyLimit(), DayKey.boundaryText(ServerConfig.dayBoundaryHour())), null);
         }
         if (entry.isItem() && rt.prices.isPriced(entry.item().getItem())) {
             ConsortiumCore.LOGGER.warn("Shop: purchase of {} by {} refused: the Consortium buys {} (price table changed since the load)",

@@ -15,7 +15,16 @@ console, which is exactly the engine's `/consortium contribute <item> <count>` c
 under `/credits`, `/prices` and `/ccore`, never under `/consortium`, and its KubeJS binding is named `ConsortiumCore`
 so the engine's script-level `Consortium` object is untouched.
 
-## What it does (0.3.0)
+## What it does (0.3.1)
+
+0.3.1 (content batch 2, `docs/EVENTS.md` 8) adds three things and nothing else: the quota board's optional
+**event** object (`{"event": {"name", "detail", "seconds_left"}}` next to `lines`; a dark red band under the header
+with a countdown that runs down on the client and hides itself when it ran out; the `{event}` presence token and a
+default tab header line `&c{event}`; every header, footer or MOTD line left empty after expansion is dropped),
+the **bucket return** (the delivery terminal puts the empty bucket back into the grid slot of an accepted bucket
+stack) and the **market day** (`[market] day_boundary_hour`, default 6: the family daily cap and the shop
+`daily_limit` reset at 06:00 server time; ledger files stay on UTC days). `/ccore board` prints the event line.
+
 
 The design lives in `docs/CONSORTIUM_CORE.md` (v0.1), `docs/CONSORTIUM_CORE_V02.md` (v0.2) and section 5 of
 `docs/WORLD_VISUALS_ADMIN_PRESENCE.md` (v0.3, the presence module) at the repository root and follows

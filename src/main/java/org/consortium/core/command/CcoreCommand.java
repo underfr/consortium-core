@@ -203,6 +203,13 @@ public final class CcoreCommand {
                 rt.board.revision(), Instant.ofEpochMilli(rt.board.publishedAt()), s.phase(), s.name(), s.day(), s.days(),
                 (int) Math.floor(s.completion() * 100), s.complete() ? ", complete" : "", s.lines().size());
         ctx.getSource().sendSuccess(() -> info(head), false);
+        BoardSnapshot.Event event = s.event();
+        long elapsed = Math.max(0L, rt.now() - rt.board.publishedAt());
+        String eventLine = event == null ? "  event: none"
+                : String.format(Locale.US, "  event: %s, %s, %s%s", event.name(), event.detail().isEmpty() ? "(no detail)" : event.detail(),
+                event.hasCountdown() ? event.remainingSeconds(elapsed) + " s left (" + event.secondsLeft() + " s at publish)" : "no countdown",
+                event.visible(elapsed) ? "" : ", ran out (hidden)");
+        ctx.getSource().sendSuccess(() -> grey(eventLine), false);
         for (BoardSnapshot.Line line : s.lines()) {
             String text = String.format(Locale.US, "  %s: %,d / %,d (%s, icon %s)%s", line.label(), line.current(), line.target(), line.key(), line.icon(),
                     line.done() ? " done" : "");
@@ -234,7 +241,7 @@ public final class CcoreCommand {
             ctx.getSource().sendSuccess(() -> grey("  (nothing for sale)"), false);
         }
         ShopCatalogPayload view = player == null ? null : ShopService.catalog(player, 0);
-        String day = Transactions.utcDayOf(rt.now());
+        String day = Transactions.capDayOf(rt.now());
         for (ShopEntry e : ConsortiumCore.SHOP.entries()) {
             StringBuilder sb = new StringBuilder("  ").append(e.key()).append(": ").append(e.name()).append(", ")
                     .append(Money.format(e.priceCents(), symbol)).append(", ");

@@ -10,7 +10,8 @@ import java.util.Locale;
  * <p>Two row variants: <b>compact</b> (24 px rows, screens 1 to 3 blocks wide: icon, label over the counter, a thin
  * bar under both) and <b>wide</b> (18 px rows, screens 4 to 7 wide: icon, label, counter and a 40 x 6 bar on one
  * line; the pitch grows to 28 px when every line fits one page). Lines that do not fit the page cycle through pages
- * every {@link #TICKS_PER_PAGE} ticks.
+ * every {@link #TICKS_PER_PAGE} ticks. With a running event (v0.3.1, EVENTS.md 8) a {@link #EVENT_H} px band sits
+ * under the header and the body starts {@code EVENT_H} lower ({@link Metrics#bodyTop()}).
  */
 public final class BoardLayout {
     public static final int PX_PER_BLOCK = 64;
@@ -18,9 +19,13 @@ public final class BoardLayout {
     public static final int HEADER_H = 24;
     public static final int HEADER_LINE_1_Y = 3;
     public static final int HEADER_LINE_2_Y = 13;
-    /** The body spans {@code BODY_TOP .. H - BODY_BOTTOM}. */
+    /** The body spans {@code BODY_TOP .. H - BODY_BOTTOM} (plus {@link #EVENT_H} when an event band is shown). */
     public static final int BODY_TOP = 26;
     public static final int BODY_BOTTOM = 2;
+    /** Event band (v0.3.1): height, its top edge (right under the header) and the text baseline inside it. */
+    public static final int EVENT_H = 10;
+    public static final int EVENT_TOP = HEADER_H;
+    public static final int EVENT_TEXT_Y = EVENT_TOP + 1;
     public static final int COMPACT_MAX_WIDTH = 3;
     public static final int COMPACT_PITCH = 24;
     public static final int WIDE_PITCH = 18;
@@ -43,6 +48,8 @@ public final class BoardLayout {
     public static final int BACKGROUND = 0xFF101820;
     public static final int HEADER = 0xFF1C2A3A;
     public static final int TRACK = 0xFF2A3644;
+    /** Dark red band of a running event. */
+    public static final int EVENT_BAND = 0xFF3A1C1C;
     public static final int TEXT = 0xFFE8EEF4;
     public static final int MUTED = 0xFFA0AEC0;
     public static final int RED = 0xFFD9534F;
@@ -79,14 +86,16 @@ public final class BoardLayout {
     /**
      * @param widthPx     screen width in pixels (64 per block)
      * @param heightPx    screen height in pixels
-     * @param bodyHeight  {@code B = H - 28}
+     * @param bodyHeight  {@code B = H - 28} (minus {@link #EVENT_H} with an event band)
      * @param variant     compact or wide
      * @param rowsPerPage rows that fit the body
      * @param pitch       row pitch in pixels
      * @param pages       pages needed for {@code lineCount} lines (at least 1)
      * @param lineCount   lines of the snapshot
+     * @param bodyTop     top y of the first row: {@link #BODY_TOP}, or {@code BODY_TOP + EVENT_H} with an event band
      */
-    public record Metrics(int widthPx, int heightPx, int bodyHeight, Variant variant, int rowsPerPage, int pitch, int pages, int lineCount) {
+    public record Metrics(int widthPx, int heightPx, int bodyHeight, Variant variant, int rowsPerPage, int pitch, int pages, int lineCount,
+                          int bodyTop) {
         /** Wide rows centre their 16 px content in the pitch; compact rows start at the top. */
         public int contentOffset() {
             return variant == Variant.WIDE ? (pitch - ICON) / 2 : 0;
@@ -94,7 +103,12 @@ public final class BoardLayout {
 
         /** Top y of row {@code index} of a page. */
         public int rowY(int index) {
-            return BODY_TOP + index * pitch;
+            return bodyTop + index * pitch;
+        }
+
+        /** True when the layout reserves the event band. */
+        public boolean hasEventBand() {
+            return bodyTop > BODY_TOP;
         }
 
         public int firstLine(int page) {
@@ -114,10 +128,17 @@ public final class BoardLayout {
     private BoardLayout() {
     }
 
+    /** The layout without an event band. */
     public static Metrics compute(int widthBlocks, int heightBlocks, int lineCount) {
+        return compute(widthBlocks, heightBlocks, lineCount, false);
+    }
+
+    /** The layout; with {@code eventBand} the body starts {@link #EVENT_H} lower and loses that height. */
+    public static Metrics compute(int widthBlocks, int heightBlocks, int lineCount, boolean eventBand) {
         int w = Math.max(1, widthBlocks) * PX_PER_BLOCK;
         int h = Math.max(1, heightBlocks) * PX_PER_BLOCK;
-        int body = h - BODY_TOP - BODY_BOTTOM;
+        int bodyTop = eventBand ? BODY_TOP + EVENT_H : BODY_TOP;
+        int body = h - bodyTop - BODY_BOTTOM;
         int n = Math.max(0, lineCount);
         Variant variant = widthBlocks <= COMPACT_MAX_WIDTH ? Variant.COMPACT : Variant.WIDE;
         int pitch;
@@ -133,7 +154,19 @@ public final class BoardLayout {
             }
         }
         int pages = n == 0 ? 1 : (n + rows - 1) / rows;
-        return new Metrics(w, h, body, variant, rows, pitch, pages, n);
+        return new Metrics(w, h, body, variant, rows, pitch, pages, n, bodyTop);
+    }
+
+    /** The event band text: {@code "Ore Rush - x2 on raw deliveries - 41:00"}; compact boards drop the detail. */
+    public static String eventText(String name, String detail, long remainingSeconds, boolean compact) {
+        StringBuilder sb = new StringBuilder(name);
+        if (!compact && detail != null && !detail.isEmpty()) {
+            sb.append(" - ").append(detail);
+        }
+        if (remainingSeconds >= 0) {
+            sb.append(" - ").append(org.consortium.core.board.BoardSnapshot.Event.clock(remainingSeconds));
+        }
+        return sb.toString();
     }
 
     /** {@code floor(ratio * 100)} clamped to 0..100. */

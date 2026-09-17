@@ -18,7 +18,7 @@ public final class Account {
         DENIED
     }
 
-    /** Paid units of one family on one UTC day, for the per-player daily cap. */
+    /** Paid units of one family on one market day ({@link DayKey}, v0.3.1; the field keeps its historical name), for the per-player daily cap. */
     public static final class DailyPaid {
         public final String family;
         public final String utcDay;
@@ -31,7 +31,7 @@ public final class Account {
         }
     }
 
-    /** Purchases of one shop entry on one UTC day, for the per-player daily limit (v0.2, 5.3). */
+    /** Purchases of one shop entry on one market day ({@link DayKey}), for the per-player daily limit (v0.2, 5.3). */
     public static final class DailyBought {
         public final String key;
         public final String utcDay;

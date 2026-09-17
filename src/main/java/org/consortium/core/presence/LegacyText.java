@@ -135,6 +135,31 @@ public final class LegacyText {
     }
 
     /**
+     * Drops every line of a multi-line legacy string that is empty once its codes are stripped (only colour codes or
+     * spaces), so a header or MOTD line made of one placeholder that expanded to nothing (v0.3.1: {@code {event}}
+     * outside an event) leaves no blank line. A single blank line collapses to the empty string.
+     */
+    public static String dropBlankLines(String legacy) {
+        if (legacy == null || legacy.isEmpty()) {
+            return "";
+        }
+        if (legacy.indexOf('\n') < 0) {
+            return strip(legacy).isBlank() ? "" : legacy;
+        }
+        StringBuilder sb = new StringBuilder(legacy.length());
+        for (String line : legacy.split("\n", -1)) {
+            if (strip(line).isBlank()) {
+                continue;
+            }
+            if (sb.length() > 0) {
+                sb.append('\n');
+            }
+            sb.append(line);
+        }
+        return sb.toString();
+    }
+
+    /**
      * Turns a {@code rank.color} meta value into the codes a format can prepend: a colour name such as {@code gold} or
      * {@code light_purple} gives {@code &6} or {@code &d}, a {@code &x} or section-sign code is normalised to {@code &x},
      * {@code #rrggbb} gives {@code &#rrggbb}. Anything else (a format code, an unknown name, a blank) gives an empty

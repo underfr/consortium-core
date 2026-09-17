@@ -24,12 +24,15 @@ import java.util.List;
  * client block entity; the {@link Stamp} says when the entry is stale.
  */
 final class BoardRenderCache {
-    /** What the entry was built from: the client board generation, the entity's sync revision and its rectangle. */
-    record Stamp(int generation, int syncRevision, int width, int height, Direction facing) {
+    /**
+     * What the entry was built from: the client board generation, the entity's sync revision, its rectangle and
+     * whether the event band is shown (a countdown that ran out removes the band and moves the body back up).
+     */
+    record Stamp(int generation, int syncRevision, int width, int height, Direction facing, boolean eventBand) {
         /** True when the entry built for this stamp is still current; avoids allocating a stamp per frame. */
-        boolean matches(int generation, int syncRevision, int width, int height, Direction facing) {
+        boolean matches(int generation, int syncRevision, int width, int height, Direction facing, boolean eventBand) {
             return this.generation == generation && this.syncRevision == syncRevision && this.width == width
-                    && this.height == height && this.facing == facing;
+                    && this.height == height && this.facing == facing && this.eventBand == eventBand;
         }
 
     }
@@ -59,10 +62,18 @@ final class BoardRenderCache {
     final FormattedCharSequence message;
     final int messageWidth;
     final List<Row> rows;
+    /** The event band (v0.3.1): name and detail without the clock; null when no band is shown. */
+    @Nullable
+    private final BoardSnapshot.Event event;
+    /** The band text rendered for {@link #eventSecond}; rebuilt when the countdown second changes. */
+    @Nullable
+    private FormattedCharSequence eventText;
+    private long eventSecond = Long.MIN_VALUE;
 
     private BoardRenderCache(Stamp stamp, BoardLayout.Metrics metrics, FormattedCharSequence title, @Nullable FormattedCharSequence status,
                              int statusWidth, int statusColor, @Nullable FormattedCharSequence day, FormattedCharSequence[] pageLabels,
-                             int[] pageLabelWidths, @Nullable FormattedCharSequence message, int messageWidth, List<Row> rows) {
+                             int[] pageLabelWidths, @Nullable FormattedCharSequence message, int messageWidth, List<Row> rows,
+                             @Nullable BoardSnapshot.Event event) {
         this.stamp = stamp;
         this.metrics = metrics;
         this.title = title;
@@ -75,11 +86,30 @@ final class BoardRenderCache {
         this.message = message;
         this.messageWidth = messageWidth;
         this.rows = rows;
+        this.event = event;
+    }
+
+    /**
+     * The event band text for the given remaining seconds (-1 = no countdown), clipped to the width; the sequence is
+     * rebuilt only when the second changes, so a frame inside the same second allocates nothing. Null without a band.
+     */
+    @Nullable
+    FormattedCharSequence eventText(Font font, long remainingSeconds) {
+        if (event == null) {
+            return null;
+        }
+        if (eventText == null || remainingSeconds != eventSecond) {
+            eventSecond = remainingSeconds;
+            String text = BoardLayout.eventText(event.name(), event.detail(), remainingSeconds, metrics.variant() == BoardLayout.Variant.COMPACT);
+            eventText = seq(font.plainSubstrByWidth(text, Math.max(0, metrics.widthPx() - 2 * BoardLayout.PAD)));
+        }
+        return eventText;
     }
 
     static BoardRenderCache build(Font font, Stamp stamp, @Nullable BoardSnapshot snapshot) {
         int lineCount = snapshot == null ? 0 : snapshot.lines().size();
-        BoardLayout.Metrics m = BoardLayout.compute(stamp.width(), stamp.height(), lineCount);
+        BoardSnapshot.Event event = snapshot == null || !stamp.eventBand() ? null : snapshot.event();
+        BoardLayout.Metrics m = BoardLayout.compute(stamp.width(), stamp.height(), lineCount, event != null);
         int w = m.widthPx();
         int headerArea = w - 2 * BoardLayout.PAD;
 
@@ -88,7 +118,7 @@ final class BoardRenderCache {
             waiting = font.plainSubstrByWidth(waiting, headerArea);
             FormattedCharSequence title = seq(font.plainSubstrByWidth(Component.translatable("gui.consortium.board.title").getString(), headerArea));
             return new BoardRenderCache(stamp, m, title, null, 0, BoardLayout.TEXT, null, new FormattedCharSequence[0], new int[0],
-                    seq(waiting), font.width(waiting), List.of());
+                    seq(waiting), font.width(waiting), List.of(), null);
         }
 
         // Header line 1: the status on the right, the phase title clipped to what is left.
@@ -129,7 +159,7 @@ final class BoardRenderCache {
             messageWidth = font.width(empty);
         }
         return new BoardRenderCache(stamp, m, seq(titleText), seq(statusText), statusWidth, statusColor, seq(dayText), pageLabels,
-                pageLabelWidths, message, messageWidth, List.copyOf(rows));
+                pageLabelWidths, message, messageWidth, List.copyOf(rows), event);
     }
 
     private static Row row(Font font, BoardLayout.Metrics m, BoardSnapshot.Line line) {

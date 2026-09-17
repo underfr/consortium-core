@@ -37,7 +37,7 @@
   "gui.consortium.shop.locked_phase": "Available from phase %s",
   "gui.consortium.shop.limit_reached": "Daily limit reached (%s per day)",
   "gui.consortium.shop.limit_left": "%s of %s bought today",
-  "gui.consortium.shop.limit_reset": "Daily limits reset at 00:00 UTC",
+  "gui.consortium.shop.limit_reset": "Daily limits reset at %s server time",
 
   "consortium.shop.bought": "Bought %s for %s. Balance: %s",
   "consortium.shop.effect_failed": "Purchase %s recorded but its delivery failed, contact staff with code %s",
@@ -47,7 +47,7 @@
   "consortium.shop.refused.unknown": "This offer no longer exists",
   "consortium.shop.refused.stage": "Not unlocked for your team",
   "consortium.shop.refused.phase": "Available from phase %s",
-  "consortium.shop.refused.limit": "Daily limit reached (%s per day, resets at 00:00 UTC)",
+  "consortium.shop.refused.limit": "Daily limit reached (%s per day, resets at %s server time)",
   "consortium.shop.refused.priced": "Purchase refused: the Consortium buys this item, tell staff",
   "consortium.shop.refused.undeliverable": "This offer cannot be delivered to your account, contact staff",
   "consortium.shop.refused.funds": "Not enough credits: %s costs %s, you have %s",

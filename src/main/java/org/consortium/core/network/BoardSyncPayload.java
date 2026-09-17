@@ -15,7 +15,8 @@ import java.util.List;
  * Server to client: the quota board (specification v0.2, 2.5). {@code snapshot} is null when nothing was published
  * ({@code published = false} on the wire), which a client coming from another server needs to reset its board.
  * Sent to every online player on each accepted change and to each player at login, right after the balance.
- * At most 32 lines of short strings: about 6 KiB.
+ * At most 32 lines of short strings: about 6 KiB. v0.3.1 appends the optional event (a boolean, then name, detail
+ * and the seconds left at publish time).
  */
 public record BoardSyncPayload(int revision, @Nullable BoardSnapshot snapshot) implements CustomPacketPayload {
     public static final Type<BoardSyncPayload> TYPE = new Type<>(ResourceLocation.fromNamespaceAndPath(ConsortiumCore.MOD_ID, "board_sync"));
@@ -48,6 +49,13 @@ public record BoardSyncPayload(int revision, @Nullable BoardSnapshot snapshot) i
             buf.writeVarLong(line.current());
             buf.writeVarLong(line.target());
         }
+        BoardSnapshot.Event event = s.event();
+        buf.writeBoolean(event != null);
+        if (event != null) {
+            buf.writeUtf(event.name(), BoardSnapshot.MAX_EVENT_NAME);
+            buf.writeUtf(event.detail(), BoardSnapshot.MAX_EVENT_DETAIL);
+            buf.writeVarInt(event.secondsLeft());
+        }
     }
 
     private static BoardSyncPayload read(RegistryFriendlyByteBuf buf) {
@@ -75,7 +83,14 @@ public record BoardSyncPayload(int revision, @Nullable BoardSnapshot snapshot) i
             long target = buf.readVarLong();
             lines.add(new BoardSnapshot.Line(key, label, icon, current, target));
         }
-        return new BoardSyncPayload(revision, new BoardSnapshot(phase, name, day, days, completion, complete, lines));
+        BoardSnapshot.Event event = null;
+        if (buf.readBoolean()) {
+            String eventName = buf.readUtf(BoardSnapshot.MAX_EVENT_NAME);
+            String detail = buf.readUtf(BoardSnapshot.MAX_EVENT_DETAIL);
+            int seconds = buf.readVarInt();
+            event = new BoardSnapshot.Event(eventName, detail, Math.max(0, Math.min(BoardSnapshot.MAX_EVENT_SECONDS, seconds)));
+        }
+        return new BoardSyncPayload(revision, new BoardSnapshot(phase, name, day, days, completion, complete, lines, event));
     }
 
     @Override

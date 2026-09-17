@@ -101,7 +101,7 @@ public final class PricesCommand {
             ServerPlayer player = ctx.getSource().getPlayer();
             if (player != null) {
                 Account a = rt.economy.account(player.getUUID());
-                double paid = a == null ? 0 : a.paidToday(f.key(), rt.transactions.utcDay(now));
+                double paid = a == null ? 0 : a.paidToday(f.key(), rt.transactions.capDay(now));
                 sb.append(", you: ").append(Units.format(paid)).append(" paid today");
             }
             sb.append(')');

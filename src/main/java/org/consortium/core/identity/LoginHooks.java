@@ -28,8 +28,8 @@ public final class LoginHooks {
             account.firstLogin = now;
         }
         account.lastSeen = now;
-        account.pruneDailyPaid(rt.transactions.utcDay(now));
-        account.pruneDailyBought(rt.transactions.utcDay(now));
+        account.pruneDailyPaid(rt.transactions.capDay(now));
+        account.pruneDailyBought(rt.transactions.capDay(now));
         rt.economy.touch();
 
         rt.notifier.showBootMessages(player);

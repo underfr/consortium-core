@@ -44,4 +44,19 @@ class MotdTextTest {
         assertEquals(S + "c" + S + "k" + S + "l" + S + "m" + S + "n" + S + "oall",
                 MotdText.render(LegacyText.parse("&c&k&l&m&n&oall")).text());
     }
+
+    @Test
+    void blankLinesAreDroppedAndTwoLinesKeptAtMost() {
+        // The second format expanded to nothing but a colour code: one line left.
+        assertEquals(List.of("&6Line one"), MotdText.lines("&6Line one\n&c"));
+        assertEquals(S + "6Line one", MotdText.renderLines(MotdText.lines("&6Line one\n&c")).text());
+        // A format carrying its own newline: after the drop, the first two lines survive.
+        List<String> lines = MotdText.lines("&6one\n&7\n&etwo\n&bthree");
+        assertEquals(List.of("&6one", "&etwo"), lines);
+        assertEquals(S + "6one\n" + S + "etwo", MotdText.renderLines(lines).text());
+        // Nothing at all still yields one empty line, so the server MOTD can be set.
+        assertEquals(List.of(""), MotdText.lines("&7\n"));
+        assertEquals("", MotdText.renderLines(MotdText.lines("")).text());
+        assertEquals(2, MotdText.MAX_LINES);
+    }
 }

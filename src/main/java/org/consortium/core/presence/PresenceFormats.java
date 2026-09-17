@@ -20,16 +20,17 @@ public record PresenceFormats(boolean enabled, String serverName, String chatNam
     public static final String DEFAULT_CHAT_NAME = "{rank_color}{prefix}&f{name}{suffix}";
     public static final String DEFAULT_CHAT_BODY_STYLE = "";
     public static final String DEFAULT_TAB_NAME = "{rank_color}{prefix}&f{name}{suffix}";
-    public static final String DEFAULT_TAB_HEADER = "&6&l{server}\n&7Phase {phase}: &f{phase_name} &8| &7Day {day}/{days}\n&7You are &f{group} &8| &e{credits} {currency}";
+    /** The last line is the running event (v0.3.1); a line left empty after expansion is dropped, so nothing shows outside an event. */
+    public static final String DEFAULT_TAB_HEADER = "&6&l{server}\n&7Phase {phase}: &f{phase_name} &8| &7Day {day}/{days}\n&7You are &f{group} &8| &e{credits} {currency}\n&c{event}";
     public static final String DEFAULT_TAB_FOOTER = "&7TPS &a{tps} &8| &7MSPT &a{mspt} &8| &7Online &f{online}&7/{max}";
     public static final int DEFAULT_TAB_REFRESH_TICKS = 60;
     public static final String DEFAULT_MOTD_LINE1 = "&6&l{server} &8| &ePhase {phase}: {phase_name}";
     public static final String DEFAULT_MOTD_LINE2 = "&7TPS {tps} &8| &f{online}&7/{max} online";
     public static final int DEFAULT_MOTD_REFRESH_TICKS = 100;
 
-    /** The placeholders {@code PresenceContext} resolves (5.2); anything else stays verbatim. */
+    /** The placeholders {@code PresenceContext} resolves (5.2, plus {@code event} in v0.3.1); anything else stays verbatim. */
     public static final Set<String> KNOWN_TOKENS = Set.of("server", "phase", "phase_name", "day", "days", "name", "prefix",
-            "suffix", "group", "rank_color", "credits", "currency", "tps", "mspt", "online", "max");
+            "suffix", "group", "rank_color", "credits", "currency", "tps", "mspt", "online", "max", "event");
 
     /** The values of 5.1 before the config is loaded. */
     public static final PresenceFormats DEFAULTS = new PresenceFormats(true, DEFAULT_SERVER_NAME, DEFAULT_CHAT_NAME,

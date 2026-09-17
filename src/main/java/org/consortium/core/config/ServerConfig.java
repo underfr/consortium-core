@@ -25,6 +25,8 @@ public final class ServerConfig {
     private static final ModConfigSpec.ConfigValue<String> CONTRIBUTE_COMMAND;
     private static final ModConfigSpec.BooleanValue PLACEMENT_GUARD;
     private static final ModConfigSpec.BooleanValue INSTANT_AUDIT;
+    // [market] (v0.3.1)
+    private static final ModConfigSpec.IntValue DAY_BOUNDARY_HOUR;
     // [presence] (v0.3, 5.1)
     private static final ModConfigSpec.BooleanValue PRESENCE_ENABLED;
     private static final ModConfigSpec.ConfigValue<String> PRESENCE_SERVER_NAME;
@@ -70,6 +72,11 @@ public final class ServerConfig {
                         "Output is suppressed; failures are logged once per minute and never affect the delivery.")
                 .define("contribute_command", DEFAULT_CONTRIBUTE_COMMAND);
         b.pop();
+        b.comment("Market day (v0.3.1): the per-player family daily cap and the shop daily_limit reset at this hour").push("market");
+        DAY_BOUNDARY_HOUR = b.comment("Hour of the server's local time at which the delivery daily cap and the shop daily limits reset",
+                        "(0 to 23; 6 = 06:00 server time, the pack engine's season day boundary). Ledger files stay on UTC days.")
+                .defineInRange("day_boundary_hour", org.consortium.core.economy.DayKey.DEFAULT_BOUNDARY_HOUR, 0, 23);
+        b.pop();
         b.comment("Chapters guards (v0.2 section 3): both do nothing without the Chapters mod").push("guards");
         PLACEMENT_GUARD = b.comment("Refuse placing a block whose item Chapters locks for the placer's team. A fake player (deployer)",
                         "may place a gated block only when one of its stages is consortium:phase_k with k at most the",
@@ -85,7 +92,8 @@ public final class ServerConfig {
                         "for a new line in the header, the footer and the MOTD. Placeholders: {server} {phase} {phase_name}",
                         "{day} {days} (last quota board snapshot), {name} {prefix} {suffix} {group} {rank_color} (LuckPerms:",
                         "highest-weight prefix and suffix, primary group display name, meta rank.color), {credits} {currency}",
-                        "(the viewer's balance), {tps} {mspt} {online} {max}. Unknown tokens stay verbatim. Names refresh on",
+                        "(the viewer's balance), {tps} {mspt} {online} {max}, {event} (the running event of the board snapshot,",
+                        "empty otherwise; a header, footer or MOTD line left empty after expansion is dropped). Unknown tokens stay verbatim. Names refresh on",
                         "rank change, login and reload only, so keep {credits} and {tps} in the header and footer.",
                         "The chat line body is never rewritten: the pack forbids cancelling the chat event (signed chat).",
                         "Edits are picked up by the file watcher; 'ccore presence reload' applies them at once.")
@@ -144,6 +152,11 @@ public final class ServerConfig {
     /** The follow-up command template (see {@link org.consortium.core.terminal.ContributeHook}). */
     public static String contributeCommand() {
         return loaded() ? CONTRIBUTE_COMMAND.get() : DEFAULT_CONTRIBUTE_COMMAND;
+    }
+
+    /** {@code [market] day_boundary_hour} (v0.3.1): the reset hour of the daily caps in the server's zone. */
+    public static int dayBoundaryHour() {
+        return loaded() ? DAY_BOUNDARY_HOUR.get() : org.consortium.core.economy.DayKey.DEFAULT_BOUNDARY_HOUR;
     }
 
     /** Guard 1 of v0.2 section 3 (needs Chapters). */

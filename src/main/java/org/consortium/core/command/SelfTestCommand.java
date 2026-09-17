@@ -145,7 +145,7 @@ final class SelfTestCommand {
 
             long priceBefore = rt.market.unitPriceCents(paid.family().key(), now);
             double saturationBefore = rt.market.saturation(paid.family().key(), now);
-            String day = rt.transactions.utcDay(now);
+            String day = rt.transactions.capDay(now);
             double paidToday = account == null ? 0 : account.paidToday(paid.family().key(), day);
             say(src, "4. delivery: 64 x " + paid.id() + " (" + paid.family().name() + ", " + Money.format(priceBefore, symbol) + " per unit, saturation "
                     + Units.format(saturationBefore) + ", paid today " + Units.format(paidToday) + ", cap " + Units.format(paid.family().dailyCap()) + ")"

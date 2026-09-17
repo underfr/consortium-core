@@ -359,7 +359,8 @@ public final class ShopScreen extends AbstractContainerScreen<ShopMenu> {
         tip.add(Component.literal(Money.format(entry.priceCents(), CommonConfig.currencySymbol())).withStyle(ChatFormatting.GOLD));
         tip.add(statusOf(entry).copy().withStyle(ChatFormatting.GRAY));
         if (entry.dailyLimit() > 0) {
-            tip.add(Component.translatable("gui.consortium.shop.limit_reset").withStyle(ChatFormatting.DARK_GRAY));
+            tip.add(Component.translatable("gui.consortium.shop.limit_reset",
+                    org.consortium.core.economy.DayKey.boundaryText(org.consortium.core.config.ServerConfig.dayBoundaryHour())).withStyle(ChatFormatting.DARK_GRAY));
         }
         graphics.renderComponentTooltip(font, tip, mouseX, mouseY);
     }

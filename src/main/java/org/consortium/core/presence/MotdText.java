@@ -62,4 +62,42 @@ public final class MotdText {
         Rendered b = render(line2);
         return new Rendered(a.text() + "\n" + b.text(), a.droppedHex() + b.droppedHex());
     }
+
+    /** The server list renders two lines: the rest is cut. */
+    public static final int MAX_LINES = 2;
+
+    /**
+     * The lines of an expanded MOTD (v0.3.1): the two formats joined with a newline, every blank line dropped
+     * ({@link LegacyText#dropBlankLines}), then capped at {@link #MAX_LINES}. Returns at least one (possibly empty)
+     * line so the caller always has something to set.
+     */
+    public static List<String> lines(String expanded) {
+        String kept = LegacyText.dropBlankLines(expanded);
+        List<String> out = new java.util.ArrayList<>();
+        for (String line : kept.split("\n", -1)) {
+            if (out.size() == MAX_LINES) {
+                break;
+            }
+            out.add(line);
+        }
+        if (out.isEmpty()) {
+            out.add("");
+        }
+        return out;
+    }
+
+    /** Renders the lines of {@link #lines} as one legacy string (one or two lines). */
+    public static Rendered renderLines(List<String> lines) {
+        StringBuilder sb = new StringBuilder();
+        int dropped = 0;
+        for (int i = 0; i < lines.size() && i < MAX_LINES; i++) {
+            Rendered r = render(LegacyText.parse(lines.get(i)));
+            if (i > 0) {
+                sb.append('\n');
+            }
+            sb.append(r.text());
+            dropped += r.droppedHex();
+        }
+        return new Rendered(sb.toString(), dropped);
+    }
 }

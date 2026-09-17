@@ -3,6 +3,7 @@ package org.consortium.core.economy;
 import net.neoforged.neoforge.common.NeoForge;
 import org.consortium.core.ConsortiumCore;
 import org.consortium.core.ConsortiumRuntime;
+import org.consortium.core.config.ServerConfig;
 import org.consortium.core.api.Result;
 import org.consortium.core.api.event.BalanceChangeEvent;
 import org.consortium.core.pricing.Market;
@@ -13,6 +14,7 @@ import org.consortium.core.terminal.ContributeHook;
 import java.io.IOException;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
@@ -81,9 +83,21 @@ public final class Transactions {
         return utcDayOf(now);
     }
 
-    /** {@code YYYY-MM-DD} of an epoch instant in UTC: the day boundary of the ledger files, the daily caps and the shop limits. */
+    /** {@code YYYY-MM-DD} of an epoch instant in UTC: the day boundary of the ledger files and the supply days. */
     public static String utcDayOf(long now) {
         return LocalDate.ofInstant(Instant.ofEpochMilli(now), ZoneOffset.UTC).toString();
+    }
+
+    public String capDay(long now) {
+        return capDayOf(now);
+    }
+
+    /**
+     * The day key of the per-player daily caps (v0.3.1): the family daily cap and the shop {@code daily_limit} both
+     * reset at {@code [market] day_boundary_hour} server time ({@link DayKey}), like the engine's season day.
+     */
+    public static String capDayOf(long now) {
+        return DayKey.of(now, ZoneId.systemDefault(), ServerConfig.dayBoundaryHour());
     }
 
     public static String newTxId() {
@@ -495,6 +509,7 @@ public final class Transactions {
         Account account = rt.economy.getOrCreate(request.player(), request.name());
         String tx = newTxId();
         String day = utcDay(now);
+        String capDay = capDay(now);
         long balance = account.balance;
         long total = 0;
         long lifetimeAfter;
@@ -543,7 +558,7 @@ public final class Transactions {
         for (DeliveryLine dl : request.lines()) {
             Market.Quote q = dl.quote();
             rt.market.advance(dl.family(), q.paidUnits(), now);
-            account.addPaidToday(dl.family(), day, q.paidUnits());
+            account.addPaidToday(dl.family(), capDay, q.paidUnits());
             account.lifetimeUnits = Units.round(account.lifetimeUnits + q.units());
             SupplyDay.FamilyStat stat = supply.family(dl.family());
             stat.credits += q.cents();

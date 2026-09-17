@@ -9,6 +9,7 @@ import java.util.Set;
 import java.util.function.Function;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PlaceholdersTest {
@@ -17,7 +18,7 @@ class PlaceholdersTest {
             Map.entry("day", "5"), Map.entry("days", "21"), Map.entry("name", "Alex"), Map.entry("prefix", "&b[Engineer] "),
             Map.entry("suffix", " [Staff]"), Map.entry("group", "Engineer"), Map.entry("rank_color", "&b"),
             Map.entry("credits", "1,234.56"), Map.entry("currency", "CC"), Map.entry("tps", "20.0"), Map.entry("mspt", "3"),
-            Map.entry("online", "12"), Map.entry("max", "30"));
+            Map.entry("online", "12"), Map.entry("max", "30"), Map.entry("event", "Ore Rush (41 min)"));
     private static final Function<String, String> RESOLVER = VALUES::get;
 
     @Test
@@ -92,5 +93,25 @@ class PlaceholdersTest {
         assertEquals(PresenceFormats.MAX_MOTD_REFRESH_TICKS, f.motdRefreshTicks());
         assertEquals(60, PresenceFormats.DEFAULTS.tabRefreshTicks());
         assertEquals(100, PresenceFormats.DEFAULTS.motdRefreshTicks());
+    }
+
+    @Test
+    void eventTokenAndTheBlankLineRule() {
+        assertTrue(PresenceFormats.KNOWN_TOKENS.contains("event"));
+        assertTrue(Placeholders.tokens(PresenceFormats.DEFAULT_TAB_HEADER).contains("event"), "the default header carries the event line");
+        Function<String, String> noEvent = token -> token.equals("event") ? "" : VALUES.get(token);
+        String header = LegacyText.dropBlankLines(Placeholders.expand(PresenceFormats.DEFAULT_TAB_HEADER, noEvent));
+        assertEquals(3, header.split("\n", -1).length, header);
+        assertFalse(header.endsWith("\n"));
+        assertFalse(header.contains("&c\n"));
+        String withEvent = LegacyText.dropBlankLines(Placeholders.expand(PresenceFormats.DEFAULT_TAB_HEADER, RESOLVER));
+        assertEquals(4, withEvent.split("\n", -1).length, withEvent);
+        assertTrue(withEvent.endsWith("&cOre Rush (41 min)"));
+        // Only codes or spaces count as blank; a middle blank line goes too, a lone blank string becomes empty.
+        assertEquals("a\nc", LegacyText.dropBlankLines("a\n&7 &r\nc"));
+        assertEquals("", LegacyText.dropBlankLines("&c"));
+        assertEquals("", LegacyText.dropBlankLines("   \n&7"));
+        assertEquals("&ax", LegacyText.dropBlankLines("&ax"));
+        assertEquals("", LegacyText.dropBlankLines(null));
     }
 }

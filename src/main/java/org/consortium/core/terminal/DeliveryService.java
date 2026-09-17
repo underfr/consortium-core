@@ -86,7 +86,7 @@ public final class DeliveryService {
 
     private static Priced price(ConsortiumRuntime rt, ServerPlayer player, List<ItemStack> slots, long nonce) {
         long now = rt.now();
-        String day = rt.transactions.utcDay(now);
+        String day = rt.transactions.capDay(now);
         Account account = rt.economy.account(player.getUUID());
         List<Quote.Refusal> refused = new ArrayList<>();
         Map<String, Aggregate> aggregates = new LinkedHashMap<>();
@@ -232,18 +232,14 @@ public final class DeliveryService {
             return Confirmation.refused(priced.quote().withMessage(why));
         }
         Transactions.DeliveryReceipt receipt = result.receipt();
-        // Remove the accepted stacks: every slot whose item is in a committed family and was not refused.
+        // Remove the accepted stacks: every slot whose item is in a committed family and was not refused keeps only
+        // the crafting remainder of its stack (the empty bucket of a bucket, v0.3.1; nothing for anything else).
         java.util.Set<Integer> refusedSlots = new java.util.HashSet<>();
         for (Quote.Refusal r : priced.quote().refused()) {
             refusedSlots.add(r.slot());
         }
-        for (int i = 0; i < grid.getContainerSize(); i++) {
-            ItemStack stack = grid.getItem(i);
-            if (stack.isEmpty() || refusedSlots.contains(i)) {
-                continue;
-            }
-            grid.setItem(i, ItemStack.EMPTY);
-        }
+        GridClear.clearAccepted(grid.getContainerSize(), refusedSlots, grid::getItem, ItemStack::isEmpty, ItemStack::getCraftingRemainingItem,
+                grid::setItem);
         List<String> receiptLines = receiptLines(rt, priced, receipt);
         for (String line : receiptLines) {
             Notifier.tell(player, line);

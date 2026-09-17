@@ -115,7 +115,36 @@ public final class BoardJson {
                 }
             }
         }
-        return new Result(new BoardSnapshot((int) (long) phase, name, (int) (long) day, (int) (long) days, completion, complete, lines), null);
+        BoardSnapshot.Event event = parseEvent(o.get("event"), warn);
+        return new Result(new BoardSnapshot((int) (long) phase, name, (int) (long) day, (int) (long) days, completion, complete, lines, event), null);
+    }
+
+    /**
+     * The optional {@code event} object (v0.3.1, EVENTS.md 8): missing or null = no event; not an object = one warning
+     * and no event; an empty name drops the object with a warning; {@code detail} is optional; {@code seconds_left}
+     * is clamped to 0..{@link BoardSnapshot#MAX_EVENT_SECONDS} (missing or not an integer = 0, no countdown).
+     */
+    static BoardSnapshot.Event parseEvent(JsonElement element, Consumer<String> warn) {
+        if (element == null || element.isJsonNull()) {
+            return null;
+        }
+        if (!element.isJsonObject()) {
+            warn.accept("event is not an object, no event shown");
+            return null;
+        }
+        JsonObject e = element.getAsJsonObject();
+        String name = text(e.get("name"), BoardSnapshot.MAX_EVENT_NAME);
+        if (name.isEmpty()) {
+            warn.accept("event has no usable name (a string of 1.." + BoardSnapshot.MAX_EVENT_NAME + " characters), no event shown");
+            return null;
+        }
+        String detail = text(e.get("detail"), BoardSnapshot.MAX_EVENT_DETAIL);
+        int seconds = 0;
+        Long raw = integer(e.get("seconds_left"));
+        if (raw != null) {
+            seconds = (int) Math.max(0L, Math.min((long) BoardSnapshot.MAX_EVENT_SECONDS, raw));
+        }
+        return new BoardSnapshot.Event(name, detail, seconds);
     }
 
     private static BoardSnapshot.Line parseLine(JsonElement element, int index, IconResolver icons, Consumer<String> warn) {
